@@ -75,7 +75,7 @@ Once the backend is running:
 - **WebSocket Server:** Listens on `/ws` for WebSocket connections from the frontend.
 - **Client Management:** Uses a `Hub` to manage active WebSocket clients.
 - **Message Handling:**
-  - `discover_devices`: Executes `chip-tool discover ble` and parses the output.
+  - `discover_devices`: Executes `chip-tool discover commissionables` and parses the output.
   - `commission_device`: Executes `chip-tool pairing ble-discriminator` (or similar) to commission a device.
   - `device_command`: Executes `chip-tool <cluster> <command>` to control devices.
 - **`chip-tool` Execution:** Uses `os/exec` to run `chip-tool` commands.

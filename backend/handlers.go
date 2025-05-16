@@ -206,7 +206,7 @@ func handleClientMessage(client *Client, msg ClientMessage) {
 
 		// chip-tool discover ble --timeout 10000 (10 seconds)
 		// Note: `chip-tool discover ble` might require sudo or specific permissions.
-		cmd := exec.Command(chipToolPath, "discover", "ble", "--timeout", "10000")
+		cmd := exec.Command(chipToolPath, "discover", "commissionables", "--timeout", "10000")
 		
 		var outBuf, errBuf bytes.Buffer
 		cmd.Stdout = &outBuf
@@ -704,10 +704,6 @@ func readAttribute(client *Client, nodeID, endpointID, clusterName, attributeNam
 		Value:     value,
 	})
 }
-
-// TODO: Implement startAttributeSubscription using `chip-tool <cluster> subscribe <attribute> <min_interval> <max_interval> <node_id> <endpoint_id>`
-// This is more complex as it requires managing a persistent subprocess and parsing its stream.
-// func startAttributeSubscription(client *Client, nodeID, endpointID, clusterName, attributeName string) {...}
 
 
 // **** NEW FUNCTION: startAttributeSubscription ****
