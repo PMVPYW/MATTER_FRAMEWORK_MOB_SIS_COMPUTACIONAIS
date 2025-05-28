@@ -36,7 +36,7 @@ export const useWizardStore = defineStore('wizard', () => {
     // ... (commands remain the same as in the previous version: matter_frontend_wizard_store_ts)
     {
       id: 1,
-      instruction: 'Update package list and install dependencies (example: git, python3-pip).',
+      instruction: 'Update package list and install dependencies.',
       command:
         'sudo apt update && sudo apt install -y git python3-pip build-essential libssl-dev libffi-dev python3-dev libavahi-client-dev',
       expectedOutput: 'Packages updated and dependencies installed.',
@@ -44,8 +44,7 @@ export const useWizardStore = defineStore('wizard', () => {
     },
     {
       id: 2,
-      instruction:
-        'Clone the Matter SDK (chip-project/connectedhomeip). Adjust path/branch as needed.',
+      instruction: 'Clone the Matter SDK (chip-project/connectedhomeip).',
       command: 'git clone https://github.com/project-chip/connectedhomeip.git ~/connectedhomeip',
       expectedOutput: 'Repository cloned successfully.',
       confirmed: false,
@@ -72,14 +71,14 @@ export const useWizardStore = defineStore('wizard', () => {
       expectedOutput: 'chip-tool built successfully.',
       confirmed: false,
     },
-    {
-      id: 6,
-      instruction: 'Optional: Install OpenThread Border Router (OTBR) if using Thread devices.',
-      command:
-        '# Placeholder: Refer to official OTBR setup guides for Raspberry Pi. \n# Example: git clone https://github.com/openthread/ot-br-posix.git ... then build and install.',
-      expectedOutput: 'OTBR installed and running.',
-      confirmed: false,
-    },
+    // {
+    //   id: 6,
+    //   instruction: 'Optional: Install OpenThread Border Router (OTBR) if using Thread devices.',
+    //   command:
+    //     '# Placeholder: Refer to official OTBR setup guides for Raspberry Pi. \n# Example: git clone https://github.com/openthread/ot-br-posix.git ... then build and install.',
+    //   expectedOutput: 'OTBR installed and running.',
+    //   confirmed: false,
+    // },
   ])
 
   const hubSetupLogs: Ref<string[]> = ref([])

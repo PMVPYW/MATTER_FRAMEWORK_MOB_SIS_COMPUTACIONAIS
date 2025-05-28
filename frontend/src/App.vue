@@ -1,6 +1,6 @@
 <template>
   <div id="app-container">
-    <h1>Matter Onboarding & Control Wizard (TS)</h1>
+    <h1>Matter Wizard ✨</h1>
 
     <div class="progress-bar">
       <div class="progress" :style="{ width: wizardStore.progress + '%' }">

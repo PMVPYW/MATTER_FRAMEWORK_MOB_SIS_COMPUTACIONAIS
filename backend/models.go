@@ -27,6 +27,8 @@ type DiscoveredDevice struct {
 	PairingHint   uint16 `json:"pairingHint,omitempty"`    // Pairing hint if available
 	DeviceType    uint32 `json:"deviceType,omitempty"`     // Matter device type code
 	CommissioningMode uint8 `json:"commissioningMode,omitempty"` // Commissioning mode
+	InstanceName  string `json:"instanceName,omitempty"` // Instance name (often from DNS-SD)
+
 	// Add other relevant fields from chip-tool discovery output as needed
 }
 

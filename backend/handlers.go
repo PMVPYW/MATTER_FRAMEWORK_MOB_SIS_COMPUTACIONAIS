@@ -524,96 +524,132 @@ func (c *Client) sendPayload(msgType string, payload interface{}) {
 	c.notifyClient(msgType, payload)
 }
 
-
-// parseDiscoveryOutput parses the output of `chip-tool discover ble`.
-// This is a simplified parser and needs to be robust for various chip-tool outputs.
+// parseDiscoveryOutput parses the output of `chip-tool discover commissionable`
 func parseDiscoveryOutput(output string, client *Client) []DiscoveredDevice {
 	var devices []DiscoveredDevice
-	// Example line: "[1678886655.727199][12345:12345] CHIP:DMG: --- Found device ---"
-	// Example line: "[1678886655.727597][12345:12345] CHIP:DIS: Device: PID: 32773 VID: 65521 Type: 257 Name: Address: E5:F9:XX:XX:XX:XX Discriminator: 3840 PairingHint: 2 CM: 1"
-	// Regex to find device information lines
-	// Regex needs to be quite flexible due to chip-tool output variations.
-	// This regex is an attempt, might need refinement.
-	// It tries to capture key-value pairs like "PID: 123", "VID: 456", "Discriminator: 789", etc.
-	// deviceEntryRegex := regexp.MustCompile(`CHIP:DIS: *Device: *(.*)`)
-	
-	// Simpler approach: look for lines with "CHIP:DIS: Device:" and then parse key-value pairs.
-	scanner := bufio.NewScanner(strings.NewReader(output))
-	var currentDevice DiscoveredDevice
-	foundDeviceBlock := false
+	var currentDevice *DiscoveredDevice // Use a pointer to modify the current device being built
 
-	// Regexes for individual fields
-	pidRegex := regexp.MustCompile(`PID: *(\d+)`)
-	vidRegex := regexp.MustCompile(`VID: *(\d+)`)
-	discriminatorRegex := regexp.MustCompile(`Discriminator: *(\d+)`)
-	nameRegex := regexp.MustCompile(`Name: *([^ ]+)`) // Name might be tricky if it has spaces and isn't quoted
-	addressRegex := regexp.MustCompile(`Address: *([0-9A-Fa-f:]+)`)
-	pairingHintRegex := regexp.MustCompile(`PairingHint: *(\d+)`)
-	cmRegex := regexp.MustCompile(`CM: *(\d+)`) // Commissioning Mode
-	deviceTypeRegex := regexp.MustCompile(`Type: *(\d+)`) // Raw device type code
+	scanner := bufio.NewScanner(strings.NewReader(output))
+
+	// Regex to clean up the prefix of each relevant line, e.g., "[timestamp][pid:tid][DIS]"
+	linePrefixRegex := regexp.MustCompile(`^\[.*?\]\s\[.*?\]\s\[DIS\]\s+`)
+
+	// Regexes for parsing specific key-value pairs from the cleaned line
+	// Making these more specific to the keys found in your output.
+	hostnameRegex := regexp.MustCompile(`^Hostname:\s*(.*)`)
+	ipAddressRegex := regexp.MustCompile(`^IP Address #\d+:\s*(.*)`) // Captures any IP address line
+	portRegex := regexp.MustCompile(`^Port:\s*(\d+)`)
+	vendorIDRegex := regexp.MustCompile(`^Vendor ID:\s*(\d+)`)
+	productIDRegex := regexp.MustCompile(`^Product ID:\s*(\d+)`)
+	longDiscriminatorRegex := regexp.MustCompile(`^Long Discriminator:\s*(\d+)`) // Using Long Discriminator
+	pairingHintRegex := regexp.MustCompile(`^Pairing Hint:\s*(\d+)`)
+	instanceNameRegex := regexp.MustCompile(`^Instance Name:\s*([0-9A-Fa-f]+)`)
+	commissioningModeRegex := regexp.MustCompile(`^Commissioning Mode:\s*(\d+)`)
+	// Device Name might also be present in some outputs, add if needed:
+	// deviceNameRegex := regexp.MustCompile(`^Device Name:\s*(.*)`)
 
 
 	for scanner.Scan() {
 		line := scanner.Text()
-		log.Printf("Parsing discovery line: %s", line) // Log each line being parsed
+		// Send each raw line to client for debugging if needed by uncommenting in handlers.go
+		// client.notifyClientLog("discovery_log", "Raw line: "+line)
 
-		if strings.Contains(line, "CHIP:DMG: --- Found device ---") {
-			if foundDeviceBlock && currentDevice.Discriminator != "" { // Save previous device if valid
-				currentDevice.ID = fmt.Sprintf("device_%s_%s_%s", currentDevice.Discriminator, currentDevice.VendorID, currentDevice.ProductID)
-				if currentDevice.Name == "" {
-					currentDevice.Name = fmt.Sprintf("MatterDevice-%s", currentDevice.Discriminator)
+		cleanLine := linePrefixRegex.ReplaceAllString(line, "")
+		trimmedCleanLine := strings.TrimSpace(cleanLine)
+
+		if strings.HasPrefix(trimmedCleanLine, "Discovered commissionable/commissioner node:") {
+			// Start of a new device block.
+			// If there was a previous device being built and it's valid, add it to the list.
+			if currentDevice != nil && (currentDevice.Discriminator != "" || currentDevice.InstanceName != "") { // Check for essential fields
+				// Ensure a unique ID is set
+				if currentDevice.ID == "" {
+					if currentDevice.InstanceName != "" {
+						currentDevice.ID = fmt.Sprintf("dnsd_instance_%s", currentDevice.InstanceName)
+					} else {
+						currentDevice.ID = fmt.Sprintf("dnsd_vid%s_pid%s_disc%s", currentDevice.VendorID, currentDevice.ProductID, currentDevice.Discriminator)
+					}
 				}
-				devices = append(devices, currentDevice)
-				client.notifyClientLog("discovery_log", fmt.Sprintf("Parsed discovered device intermediate: %+v", currentDevice))
+				// Ensure a name is set if not parsed
+				if currentDevice.Name == "" {
+					currentDevice.Name = fmt.Sprintf("MatterDevice-%s", currentDevice.InstanceName)
+				}
+				devices = append(devices, *currentDevice)
+				client.notifyClientLog("discovery_log", fmt.Sprintf("Completed parsing device: %+v", *currentDevice))
 			}
-			currentDevice = DiscoveredDevice{} // Start a new device
-			foundDeviceBlock = true
+			// Initialize a new device
+			currentDevice = &DiscoveredDevice{}
+			client.notifyClientLog("discovery_log", "New device block started by: "+trimmedCleanLine)
 			continue
 		}
 
-		if foundDeviceBlock && strings.Contains(line, "CHIP:DIS: Device:") {
-			// This line usually contains multiple fields.
-			if m := pidRegex.FindStringSubmatch(line); len(m) > 1 {
-				currentDevice.ProductID = m[1]
-			}
-			if m := vidRegex.FindStringSubmatch(line); len(m) > 1 {
+		// If we are inside a device block (currentDevice is not nil)
+		if currentDevice != nil {
+			if m := hostnameRegex.FindStringSubmatch(trimmedCleanLine); len(m) > 1 {
+				currentDevice.Name = m[1] // Using Hostname as a potential Name
+				client.notifyClientLog("discovery_log", fmt.Sprintf("Parsed Hostname: %s", m[1]))
+			} else if m := ipAddressRegex.FindStringSubmatch(trimmedCleanLine); len(m) > 1 {
+				// We might have multiple IP addresses. For simplicity, store the first one.
+				// The DiscoveredDevice struct doesn't have an IP field yet, but you could add it.
+				// For now, just log it.
+				client.notifyClientLog("discovery_log", fmt.Sprintf("Parsed IP Address: %s", m[1]))
+			} else if m := portRegex.FindStringSubmatch(trimmedCleanLine); len(m) > 1 {
+				// Port also not in current DiscoveredDevice struct, log for now.
+				client.notifyClientLog("discovery_log", fmt.Sprintf("Parsed Port: %s", m[1]))
+			} else if m := vendorIDRegex.FindStringSubmatch(trimmedCleanLine); len(m) > 1 {
 				currentDevice.VendorID = m[1]
-			}
-			if m := discriminatorRegex.FindStringSubmatch(line); len(m) > 1 {
-				currentDevice.Discriminator = m[1]
-			}
-			if m := nameRegex.FindStringSubmatch(line); len(m) > 1 {
-				currentDevice.Name = m[1]
-			}
-			if m := addressRegex.FindStringSubmatch(line); len(m) > 1 {
-				currentDevice.MACAddress = m[1]
-			}
-			if m := pairingHintRegex.FindStringSubmatch(line); len(m) > 1 {
+				client.notifyClientLog("discovery_log", fmt.Sprintf("Parsed Vendor ID: %s", m[1]))
+			} else if m := productIDRegex.FindStringSubmatch(trimmedCleanLine); len(m) > 1 {
+				currentDevice.ProductID = m[1]
+				client.notifyClientLog("discovery_log", fmt.Sprintf("Parsed Product ID: %s", m[1]))
+			} else if m := longDiscriminatorRegex.FindStringSubmatch(trimmedCleanLine); len(m) > 1 {
+				currentDevice.Discriminator = m[1] // Using Long Discriminator
+				client.notifyClientLog("discovery_log", fmt.Sprintf("Parsed Long Discriminator: %s", m[1]))
+			} else if m := pairingHintRegex.FindStringSubmatch(trimmedCleanLine); len(m) > 1 {
 				ph, _ := strconv.ParseUint(m[1], 10, 16)
 				currentDevice.PairingHint = uint16(ph)
-			}
-			if m := cmRegex.FindStringSubmatch(line); len(m) > 1 {
+				client.notifyClientLog("discovery_log", fmt.Sprintf("Parsed Pairing Hint: %s", m[1]))
+			} else if m := instanceNameRegex.FindStringSubmatch(trimmedCleanLine); len(m) > 1 {
+				currentDevice.InstanceName = m[1] // Store instance name
+				client.notifyClientLog("discovery_log", fmt.Sprintf("Parsed Instance Name: %s", m[1]))
+			} else if m := commissioningModeRegex.FindStringSubmatch(trimmedCleanLine); len(m) > 1 {
 				cm, _ := strconv.ParseUint(m[1], 10, 8)
 				currentDevice.CommissioningMode = uint8(cm)
+				// You might want to map this to a string like "BLE" or "OnNetwork" for the frontend
+				// CM: 1 often means BLE, CM: 2 often means OnNetwork (DNS-SD)
+				currentDevice.Type = fmt.Sprintf("CM:%d", cm) // Store raw CM as type for now
+				client.notifyClientLog("discovery_log", fmt.Sprintf("Parsed Commissioning Mode: %s", m[1]))
 			}
-			if m := deviceTypeRegex.FindStringSubmatch(line); len(m) > 1 {
-				dt, _ := strconv.ParseUint(m[1], 10, 32)
-				currentDevice.DeviceType = uint32(dt)
-			}
+			// Add other regex checks here if needed for fields like "Device Name", "Device Type" etc.
+			// Example:
+			// else if m := deviceNameRegex.FindStringSubmatch(trimmedCleanLine); len(m) > 1 {
+			// 	currentDevice.Name = m[1]
+			// 	client.notifyClientLog("discovery_log", fmt.Sprintf("Parsed Device Name: %s", m[1]))
+			// }
 		}
 	}
+
 	// Add the last processed device if it's valid
-	if foundDeviceBlock && currentDevice.Discriminator != "" {
-		currentDevice.ID = fmt.Sprintf("device_%s_%s_%s", currentDevice.Discriminator, currentDevice.VendorID, currentDevice.ProductID)
-		if currentDevice.Name == "" {
-			currentDevice.Name = fmt.Sprintf("MatterDevice-%s", currentDevice.Discriminator)
+	if currentDevice != nil && (currentDevice.Discriminator != "" || currentDevice.InstanceName != "") {
+		if currentDevice.ID == "" {
+			if currentDevice.InstanceName != "" {
+				currentDevice.ID = fmt.Sprintf("dnsd_instance_%s", currentDevice.InstanceName)
+			} else {
+				currentDevice.ID = fmt.Sprintf("dnsd_vid%s_pid%s_disc%s", currentDevice.VendorID, currentDevice.ProductID, currentDevice.Discriminator)
+			}
 		}
-		devices = append(devices, currentDevice)
-		client.notifyClientLog("discovery_log", fmt.Sprintf("Parsed discovered device final: %+v", currentDevice))
+		if currentDevice.Name == "" && currentDevice.InstanceName != "" { // Prefer InstanceName if Hostname wasn't parsed as Name
+		    currentDevice.Name = fmt.Sprintf("MatterDevice-%s", currentDevice.InstanceName)
+		} else if currentDevice.Name == "" { // Fallback if no Hostname or InstanceName
+			currentDevice.Name = fmt.Sprintf("MatterDevice-VID%s-PID%s", currentDevice.VendorID, currentDevice.ProductID)
+		}
+		devices = append(devices, *currentDevice)
+		client.notifyClientLog("discovery_log", fmt.Sprintf("Completed parsing final device: %+v", *currentDevice))
 	}
-	
+
 	if len(devices) == 0 {
 		client.notifyClientLog("discovery_log", "No devices parsed from output. Check chip-tool output and parsing logic.")
+	} else {
+		client.notifyClientLog("discovery_log", fmt.Sprintf("Successfully parsed %d device(s).", len(devices)))
 	}
 
 	return devices
