@@ -206,7 +206,7 @@ func handleClientMessage(client *Client, msg ClientMessage) {
 
 		// chip-tool discover ble --timeout 10000 (10 seconds)
 		// Note: `chip-tool discover ble` might require sudo or specific permissions.
-		cmd := exec.Command(chipToolPath, "discover", "commissionables", "--timeout", "10000")
+		cmd := exec.Command(chipToolPath, "discover", "commissionables")
 		
 		var outBuf, errBuf bytes.Buffer
 		cmd.Stdout = &outBuf
