@@ -2,7 +2,6 @@ package main
 
 import (
 	"bufio"
-	"bytes"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -60,6 +59,8 @@ type Client struct {
 	send chan []byte
 	// Mutex to protect concurrent writes to the WebSocket connection
 	writeMu sync.Mutex
+	// activeSubscriptions map[string]*exec.Cmd // For robust subscription management
+	// subMu sync.Mutex
 }
 
 type SubscribeAttributePayload struct {
@@ -76,6 +77,8 @@ type SubscribeAttributePayload struct {
 func (c *Client) readPump() {
 	defer func() {
 		c.hub.unregister <- c
+		// TODO: When a client disconnects, all its active subscriptions should be stopped.
+		// This would involve iterating c.activeSubscriptions and calling cmd.Process.Kill()
 		c.conn.Close()
 		log.Printf("Client %v disconnected from readPump", c.conn.RemoteAddr())
 	}()
@@ -97,7 +100,7 @@ func (c *Client) readPump() {
 			break
 		}
 
-		var clientMsg ClientMessage
+		var clientMsg ClientMessage // Assuming ClientMessage is defined in models.go
 		if err := json.Unmarshal(messageBytes, &clientMsg); err != nil {
 			log.Printf("Error unmarshalling client message from %v: %v. Message: %s", c.conn.RemoteAddr(), err, string(messageBytes))
 			c.notifyClient("error", map[string]interface{}{"message": "Invalid message format: " + err.Error()})
@@ -116,7 +119,6 @@ func (c *Client) writePump() {
 		ticker.Stop()
 		c.conn.Close() // Ensure connection is closed if writePump exits
 		log.Printf("Client %v disconnected from writePump", c.conn.RemoteAddr())
-		// The readPump's defer will handle unregistering from the hub.
 	}()
 	for {
 		select {
@@ -124,7 +126,6 @@ func (c *Client) writePump() {
 			c.writeMu.Lock()
 			_ = c.conn.SetWriteDeadline(time.Now().Add(writeWait))
 			if !ok {
-				// The hub closed the channel.
 				log.Printf("Client %v send channel closed, sending close message.", c.conn.RemoteAddr())
 				_ = c.conn.WriteMessage(websocket.CloseMessage, []byte{})
 				c.writeMu.Unlock()
@@ -135,22 +136,19 @@ func (c *Client) writePump() {
 			if err != nil {
 				log.Printf("Client %v error getting next writer: %v", c.conn.RemoteAddr(), err)
 				c.writeMu.Unlock()
-				return // Exit if we can't get a writer
+				return
 			}
 			_, err = w.Write(message)
 			if err != nil {
 				log.Printf("Client %v error writing message: %v", c.conn.RemoteAddr(), err)
-				// Attempt to close writer even on error
 				_ = w.Close()
 				c.writeMu.Unlock()
-				return // Exit on write error
+				return
 			}
 
-			// Add queued messages to the current WebSocket message.
-			// This can improve efficiency by batching messages.
 			n := len(c.send)
 			for i := 0; i < n; i++ {
-				_, _ = w.Write([]byte{'\n'}) // Optional: newline separator for multiple JSON objects
+				_, _ = w.Write([]byte{'\n'})
 				_, err = w.Write(<-c.send)
 				if err != nil {
 					log.Printf("Client %v error writing queued message: %v", c.conn.RemoteAddr(), err)
@@ -163,7 +161,7 @@ func (c *Client) writePump() {
 			if err := w.Close(); err != nil {
 				log.Printf("Client %v error closing writer: %v", c.conn.RemoteAddr(), err)
 				c.writeMu.Unlock()
-				return // Exit on close error
+				return
 			}
 			c.writeMu.Unlock()
 
@@ -173,7 +171,7 @@ func (c *Client) writePump() {
 			if err := c.conn.WriteMessage(websocket.PingMessage, nil); err != nil {
 				log.Printf("Client %v error sending ping: %v", c.conn.RemoteAddr(), err)
 				c.writeMu.Unlock()
-				return // Exit if ping fails
+				return
 			}
 			c.writeMu.Unlock()
 		}
@@ -187,28 +185,34 @@ func serveWs(hub *Hub, w http.ResponseWriter, r *http.Request) {
 		log.Println("WebSocket upgrade error:", err)
 		return
 	}
+	// For robust subscription management, initialize activeSubscriptions map here:
+	// client := &Client{hub: hub, conn: conn, send: make(chan []byte, 256), activeSubscriptions: make(map[string]*exec.Cmd)}
 	client := &Client{hub: hub, conn: conn, send: make(chan []byte, 256)}
 	client.hub.register <- client
 
 	log.Printf("Client %v connected via WebSocket", conn.RemoteAddr())
 
-	// Allow collection of memory referenced by the caller by doing all work in new goroutines.
 	go client.writePump()
 	go client.readPump()
 }
 
+// ANSI escape code stripper
+var ansiRegex = regexp.MustCompile(`\x1b\[[0-9;]*[a-zA-Z]`)
+
+func stripAnsi(str string) string {
+	return ansiRegex.ReplaceAllString(str, "")
+}
+
 // handleClientMessage processes messages from the client and interacts with chip-tool.
-func handleClientMessage(client *Client, msg ClientMessage) {
+func handleClientMessage(client *Client, msg ClientMessage) { // ClientMessage should be defined in models.go
 	switch msg.Type {
 	case "discover_devices":
-		log.Println("Handling discover_devices request")
-		client.notifyClientLog("discovery_log", "Starting BLE device discovery via chip-tool...")
+		log.Println("Handling discover_devices request (for 'commissionable' devices)")
+		client.notifyClientLog("discovery_log", "Starting 'discover commissionable' via chip-tool...")
 
-		// chip-tool discover ble --timeout 10000 (10 seconds)
-		// Note: `chip-tool discover ble` might require sudo or specific permissions.
-		cmd := exec.Command(chipToolPath, "discover", "commissionables")
-		
-		var outBuf, errBuf bytes.Buffer
+		cmd := exec.Command(chipToolPath, "discover", "commissionable")
+
+		var outBuf, errBuf strings.Builder
 		cmd.Stdout = &outBuf
 		cmd.Stderr = &errBuf
 
@@ -216,83 +220,52 @@ func handleClientMessage(client *Client, msg ClientMessage) {
 		stdout := outBuf.String()
 		stderr := errBuf.String()
 
-		log.Printf("chip-tool discover stdout:\n%s", stdout)
+		log.Printf("chip-tool 'discover commissionable' stdout:\n%s", stdout)
 		if stderr != "" {
-			log.Printf("chip-tool discover stderr:\n%s", stderr)
+			log.Printf("chip-tool 'discover commissionable' stderr:\n%s", stderr)
 		}
-		
+
 		if err != nil {
-			errMsg := fmt.Sprintf("Error running chip-tool discover: %v. Stderr: %s", err, stderr)
+			errMsg := fmt.Sprintf("Error running chip-tool 'discover commissionable': %v. Stderr: %s", err, stderr)
 			log.Println(errMsg)
 			client.notifyClientLog("discovery_log", "Error during discovery: "+errMsg)
-			client.sendPayload("discovery_result", DiscoveryResultPayload{Devices: []DiscoveredDevice{}, Error: errMsg})
+			client.sendPayload("discovery_result", DiscoveryResultPayload{Devices: []DiscoveredDevice{}, Error: errMsg}) // Assumes DiscoveryResultPayload is in models.go
 			return
 		}
-		
-		client.notifyClientLog("discovery_log", "Discovery command finished. Output:\n"+stdout)
-		discovered := parseDiscoveryOutput(stdout, client) // Pass client for logging within parser
+
+		client.notifyClientLog("discovery_log", "Discovery command 'discover commissionable' finished. Output processing...")
+		discovered := parseDiscoveryOutput(stdout, client)
 		client.sendPayload("discovery_result", DiscoveryResultPayload{Devices: discovered})
 
 	case "commission_device":
-		var payload CommissionDevicePayload
-		payloadBytes, _ := json.Marshal(msg.Payload) // Convert interface{} to map[string]interface{} then to struct
+		var payload CommissionDevicePayload // Assumes CommissionDevicePayload is in models.go
+		payloadBytes, _ := json.Marshal(msg.Payload)
 		if err := json.Unmarshal(payloadBytes, &payload); err != nil {
 			client.notifyClientLog("commissioning_log", "Invalid payload for commission_device: "+err.Error())
-			client.sendPayload("commissioning_status", CommissioningStatusPayload{Success: false, Error: "Invalid payload: " + err.Error()})
+			client.sendPayload("commissioning_status", CommissioningStatusPayload{Success: false, Error: "Invalid payload: " + err.Error()}) // Assumes CommissioningStatusPayload is in models.go
 			return
 		}
-
 		log.Printf("Handling commission_device request: %+v", payload)
 		if payload.SetupCode == "" || payload.NodeIDToAssign == "" || payload.Discriminator == "" {
 			client.notifyClientLog("commissioning_log", "Missing discriminator, setupCode, or nodeIdToAssign for commissioning.")
 			client.sendPayload("commissioning_status", CommissioningStatusPayload{Success: false, Error: "Missing discriminator, setupCode, or nodeIdToAssign.", OriginalDiscriminator: payload.Discriminator})
 			return
 		}
-
 		client.notifyClientLog("commissioning_log", fmt.Sprintf("Starting commissioning for Discriminator %s, proposed Node ID %s with setup code %s", payload.Discriminator, payload.NodeIDToAssign, payload.SetupCode))
-
-		// chip-tool pairing ble-thread <node-id-to-assign> <setup-payload> <discriminator> <operational-dataset>
-		// or chip-tool pairing ble-wifi <node-id-to-assign> <setup-payload> <discriminator> <wifi-ssid> <wifi-password>
-		// For simplicity, using `code` which assumes device is already on an IP network or for simpler BLE cases.
-		// A more robust solution needs to determine commissioning method (ble-thread, ble-wifi, onnetwork, code)
-		// and gather necessary parameters (dataset, SSID/password).
-		// The `payload.NodeIDToAssign` from frontend is a *suggestion*. Matter assigns the actual Node ID.
-		// We pass it to chip-tool, which will use it if available, otherwise, a new one is picked.
-		// We need to parse the *actual* Node ID from chip-tool's output.
-
-		// Example using `pairing code` for simplicity (often requires device to be on IP or specific BLE setup)
-		// chip-tool pairing code <node_id_to_assign_if_known_else_new> <setup_code>
-		// If using BLE for initial commissioning with a known discriminator:
-		// chip-tool pairing ble-discriminator <discriminator> <setup_code> <node_id_to_assign>
-		// Let's use ble-discriminator as it's more common for uncommissioned BLE devices.
-		// The Node ID to assign is often a large random number for chip-tool.
-		// The frontend sends a temp one, we can use that or generate one.
-		// The actual node ID will be in the output.
-
-		// Using a fixed temporary node ID for the command, as chip-tool might assign its own.
-		// We need to parse the actual assigned Node ID from the output.
-		tempCommissioningNodeID := "112233" // A placeholder, chip-tool will manage actual assignment.
-
+		tempCommissioningNodeID := "112233"
 		cmdArgs := []string{"pairing", "ble-discriminator", payload.Discriminator, payload.SetupCode, tempCommissioningNodeID}
-		// if paaTrustStorePath != "" {
-		// cmdArgs = append(cmdArgs, "--paa-trust-store-path", paaTrustStorePath)
-		// }
+		// if paaTrustStorePath != "" { cmdArgs = append(cmdArgs, "--paa-trust-store-path", paaTrustStorePath) }
 		cmd := exec.Command(chipToolPath, cmdArgs...)
-
 		client.notifyClientLog("commissioning_log", fmt.Sprintf("Executing: %s %s", chipToolPath, strings.Join(cmdArgs, " ")))
-
-		var outBuf, errBuf strings.Builder
+		var outBuf, errBuf strings.Builder // Re-declare for this scope
 		cmd.Stdout = &outBuf
 		cmd.Stderr = &errBuf
-		
-		err := cmd.Run()
-		stdout := outBuf.String()
-		stderr := errBuf.String()
+		err := cmd.Run()            // Re-declare err for this scope
+		stdout := outBuf.String()   // Re-declare stdout for this scope
+		stderr := errBuf.String()   // Re-declare stderr for this scope
 		commissioningOutput := fmt.Sprintf("Stdout:\n%s\nStderr:\n%s", stdout, stderr)
-
 		log.Printf("chip-tool pairing output:\n%s", commissioningOutput)
 		client.notifyClientLog("commissioning_log", "Commissioning command output:\n"+commissioningOutput)
-
 		if err != nil {
 			errMsg := fmt.Sprintf("Error commissioning device: %v. Output: %s", err, commissioningOutput)
 			log.Println(errMsg)
@@ -301,18 +274,12 @@ func handleClientMessage(client *Client, msg ClientMessage) {
 				Error:                 errMsg,
 				Details:               commissioningOutput,
 				OriginalDiscriminator: payload.Discriminator,
-				DiscriminatorAssociatedWithRequest: payload.Discriminator, // from original request
+				DiscriminatorAssociatedWithRequest: payload.Discriminator,
 			})
 			return
 		}
-		
-		// Parse commissioning output for success and actual Node ID
-		// This is highly dependent on chip-tool's output format.
-		// Example success: "Successfully commissioned device with node ID 0x<ACTUAL_NODE_ID>"
-		// Example success: "Device commissioning completed with success" followed by node ID info.
 		reNodeID := regexp.MustCompile(`Successfully commissioned device with node ID (0x[0-9a-fA-F]+|\d+)`)
 		matches := reNodeID.FindStringSubmatch(stdout)
-		
 		actualNodeID := ""
 		if len(matches) > 1 {
 			actualNodeID = matches[1]
@@ -324,11 +291,8 @@ func handleClientMessage(client *Client, msg ClientMessage) {
 				OriginalDiscriminator: payload.Discriminator,
 				DiscriminatorAssociatedWithRequest: payload.Discriminator,
 			})
-			// Optional: Automatically start subscription or read initial attributes
-			go readAttribute(client, actualNodeID, "1", "BasicInformation", "NodeLabel") // Example read
+			go readAttribute(client, actualNodeID, "1", "BasicInformation", "NodeLabel")
 		} else if strings.Contains(stdout, "Device commissioning completed with success") || strings.Contains(stdout, "Commissioning success") {
-			// Could not parse NodeID directly, but success message found.
-			// This might happen if node ID is logged differently or if we need to query it.
 			log.Printf("Commissioning reported success for discriminator %s, but Node ID not parsed directly from output.", payload.Discriminator)
 			client.sendPayload("commissioning_status", CommissioningStatusPayload{
 				Success:               true,
@@ -348,90 +312,61 @@ func handleClientMessage(client *Client, msg ClientMessage) {
 		}
 
 	case "device_command":
-		var payload DeviceCommandPayload
+		var payload DeviceCommandPayload // Assumes DeviceCommandPayload is in models.go
 		payloadBytes, _ := json.Marshal(msg.Payload)
 		if err := json.Unmarshal(payloadBytes, &payload); err != nil {
-			client.notifyClientLog("command_response", "Invalid payload for device_command: "+err.Error()) // Use specific log type if frontend expects it
-			client.sendPayload("command_response", CommandResponsePayload{Success: false, Error: "Invalid payload: " + err.Error()})
+			client.notifyClientLog("command_response", "Invalid payload for device_command: "+err.Error())
+			client.sendPayload("command_response", CommandResponsePayload{Success: false, Error: "Invalid payload: " + err.Error()}) // Assumes CommandResponsePayload is in models.go
 			return
 		}
-
 		log.Printf("Handling device_command request: %+v", payload)
 		if payload.NodeID == "" || payload.Cluster == "" || payload.Command == "" {
 			client.sendPayload("command_response", CommandResponsePayload{Success: false, NodeID: payload.NodeID, Error: "Missing nodeId, cluster, or command"})
 			return
 		}
-
-		// Endpoint ID is often 1 for the primary function. This is a simplification.
-		endpointID := "1" // Default endpoint
-
-		// chip-tool <cluster_lowercase> <command_lowercase> <param1> <param2> ... <nodeId> <endpointId>
-		// Note: chip-tool argument order can vary. For commands like onoff 'on', it's:
-		// chip-tool onoff on <nodeId> <endpointId>
-		// For levelcontrol 'move-to-level', it's:
-		// chip-tool levelcontrol move-to-level <level> <transitionTime> <optionMask> <optionOverride> <nodeId> <endpointId>
-
+		endpointID := "1"
 		cmdArgs := []string{strings.ToLower(payload.Cluster), strings.ToLower(payload.Command)}
-
-		// Add specific parameters for commands
 		switch payload.Cluster {
 		case "OnOff":
-			// No additional params for On, Off, Toggle before nodeId and endpointId
 		case "LevelControl":
 			if payload.Command == "MoveToLevel" {
-				levelVal, okL := payload.Params["level"].(float64) // JSON numbers are float64
-				// transitionTime, optionMask, optionOverride often 0 for simple cases
+				levelVal, okL := payload.Params["level"].(float64)
 				ttVal, okTT := payload.Params["transitionTime"].(float64)
-				// omVal, okOM := payload.Params["optionMask"].(float64)
-				// ooVal, okOO := payload.Params["optionOverride"].(float64)
-
 				if !okL {
 					client.sendPayload("command_response", CommandResponsePayload{Success: false, NodeID: payload.NodeID, Error: "Missing or invalid 'level' parameter for MoveToLevel"})
 					return
 				}
 				cmdArgs = append(cmdArgs, strconv.Itoa(int(levelVal)))
-				if okTT { // transitionTime is optional for chip-tool if 0
+				if okTT {
 					cmdArgs = append(cmdArgs, strconv.Itoa(int(ttVal)))
 				} else {
-					cmdArgs = append(cmdArgs, "0") // Default transition time
+					cmdArgs = append(cmdArgs, "0")
 				}
-				// Default optionMask and optionOverride
-				cmdArgs = append(cmdArgs, "0", "0") 
+				cmdArgs = append(cmdArgs, "0", "0")
 			}
-		// Add more cluster/command specific parameter handling here
 		default:
-			// For generic commands, try to append params if any, assuming they are simple string values
 			for k, v := range payload.Params {
 				client.notifyClientLog("command_response", fmt.Sprintf("Warning: Generic param handling for %s.%s - %s:%v. May not be correct for chip-tool.", payload.Cluster, payload.Command, k, v))
 				cmdArgs = append(cmdArgs, fmt.Sprintf("%v", v))
 			}
 		}
-
 		cmdArgs = append(cmdArgs, payload.NodeID, endpointID)
-		cmd := exec.Command(chipToolPath, cmdArgs...)
+		cmd := exec.Command(chipToolPath, cmdArgs...) // Re-declare cmd
 		client.notifyClientLog("command_response", fmt.Sprintf("Executing: %s %s", chipToolPath, strings.Join(cmdArgs, " ")))
-
-
-		var outBuf, errBuf strings.Builder
+		var outBuf, errBuf strings.Builder // Re-declare for this scope
 		cmd.Stdout = &outBuf
 		cmd.Stderr = &errBuf
-
-		err := cmd.Run()
-		stdout := outBuf.String()
-		stderr := errBuf.String()
+		err := cmd.Run() // Re-declare err
+		stdout := outBuf.String() // Re-declare
+		stderr := errBuf.String() // Re-declare
 		cmdOutput := fmt.Sprintf("Stdout:\n%s\nStderr:\n%s", stdout, stderr)
-
 		log.Printf("chip-tool command output for %s.%s on %s:\n%s", payload.Cluster, payload.Command, payload.NodeID, cmdOutput)
-		
 		if err != nil {
 			errMsg := fmt.Sprintf("Error executing %s.%s on %s: %v. Output: %s", payload.Command, payload.Cluster, payload.NodeID, err, cmdOutput)
 			log.Println(errMsg)
 			client.sendPayload("command_response", CommandResponsePayload{Success: false, NodeID: payload.NodeID, Error: errMsg, Details: cmdOutput})
 			return
 		}
-		
-		// Simplistic success check. chip-tool might not always give clear success/failure in exit code for all commands.
-		// Look for "CHIP Error" or "Error:" in output.
 		if strings.Contains(stdout, "CHIP Error") || strings.Contains(stderr, "CHIP Error") || strings.Contains(stderr, "Error:") {
 			errMsg := "Command executed but chip-tool reported an error in its output."
 			log.Println(errMsg, "Details:", cmdOutput)
@@ -439,10 +374,6 @@ func handleClientMessage(client *Client, msg ClientMessage) {
 		} else {
 			log.Printf("Command %s.%s on Node %s executed. Output: %s", payload.Cluster, payload.Command, payload.NodeID, cmdOutput)
 			client.sendPayload("command_response", CommandResponsePayload{Success: true, NodeID: payload.NodeID, Details: "Command executed. Output: " + cmdOutput})
-
-			// After a command, try to read the relevant attribute to update UI
-			// This makes the UI more responsive to state changes.
-			// A more robust solution would use subscriptions.
 			if payload.Cluster == "OnOff" && (payload.Command == "On" || payload.Command == "Off" || payload.Command == "Toggle") {
 				go readAttribute(client, payload.NodeID, endpointID, "OnOff", "OnOff")
 			}
@@ -450,14 +381,12 @@ func handleClientMessage(client *Client, msg ClientMessage) {
 				go readAttribute(client, payload.NodeID, endpointID, "LevelControl", "CurrentLevel")
 			}
 		}
-	
-	// **** ADD THIS NEW CASE for handling subscriptions ****
+
 	case "subscribe_attribute":
-		var payload SubscribeAttributePayload
+		var payload SubscribeAttributePayload // Already defined globally in this file for the example
 		payloadBytes, _ := json.Marshal(msg.Payload)
 		if err := json.Unmarshal(payloadBytes, &payload); err != nil {
 			client.notifyClientLog("subscription_log", "Invalid payload for subscribe_attribute: "+err.Error())
-			// Consider sending a specific error response type if frontend needs it
 			client.notifyClient("error", map[string]interface{}{"message": "Invalid subscribe_attribute payload: " + err.Error()})
 			return
 		}
@@ -470,13 +399,9 @@ func handleClientMessage(client *Client, msg ClientMessage) {
 		}
 		epId := payload.EndpointID
 		if epId == "" {
-			epId = "1" // Default to endpoint 1 if not specified
+			epId = "1"
 		}
-		// Launch the subscription in a new goroutine.
-		// Note: This doesn't store/manage the *exec.Cmd process for later termination.
-		// For a real app, you'd want to store cmd instances to kill them on client disconnect or unsubscribe request.
 		go startAttributeSubscription(client, payload.NodeID, epId, payload.Cluster, payload.Attribute, payload.MinInterval, payload.MaxInterval)
-
 
 	default:
 		log.Printf("Unknown message type from client %v: %s", client.conn.RemoteAddr(), msg.Type)
@@ -484,92 +409,29 @@ func handleClientMessage(client *Client, msg ClientMessage) {
 	}
 }
 
-// notifyClientLog sends a log message to a specific client.
-// The frontend's wizardStore.handleBackendMessage expects specific types for logs.
-func (c *Client) notifyClientLog(logType string, data string) {
-	// logType could be "discovery_log", "commissioning_log", "hub_setup_log" etc.
-	// The frontend's TypedServerToClientMessage expects payload for these.
-	msg := ServerMessage{Type: logType, Payload: data}
-	bytes, err := json.Marshal(msg)
-	if err != nil {
-		log.Printf("Error marshalling log message for client %v: %v", c.conn.RemoteAddr(), err)
-		return
+// Helper function to extract value after a known key (like "Hostname: ")
+func extractValueAfterKey(line, key string) string {
+	if strings.HasPrefix(line, key) {
+		return strings.TrimSpace(strings.TrimPrefix(line, key))
 	}
-	select {
-	case c.send <- bytes:
-	default:
-		log.Printf("Client %v send channel full, log message dropped: %s", c.conn.RemoteAddr(), logType)
-	}
-}
-
-// notifyClient sends a generic message to a specific client.
-// Used for simpler messages or errors not fitting specific payload structures.
-func (c *Client) notifyClient(msgType string, payload interface{}) {
-	msg := ServerMessage{Type: msgType, Payload: payload}
-	bytes, err := json.Marshal(msg)
-	if err != nil {
-		log.Printf("Error marshalling server message for client %v: %v", c.conn.RemoteAddr(), err)
-		return
-	}
-	select {
-	case c.send <- bytes:
-	default:
-		log.Printf("Client %v send channel full, message dropped: %s", c.conn.RemoteAddr(), msgType)
-	}
-}
-
-// sendPayload is a helper to send strongly-typed payloads.
-func (c *Client) sendPayload(msgType string, payload interface{}) {
-	// This is essentially the same as notifyClient, but emphasizes structured payloads.
-	c.notifyClient(msgType, payload)
-}
-
-// ANSI escape code stripper
-var ansiRegex = regexp.MustCompile(`\x1b\[[0-9;]*[a-zA-Z]`)
-
-func stripAnsi(str string) string {
-	return ansiRegex.ReplaceAllString(str, "")
+	return ""
 }
 
 // parseDiscoveryOutput parses the output of `chip-tool discover commissionable`
-func parseDiscoveryOutput(output string, client *Client) []DiscoveredDevice {
+func parseDiscoveryOutput(output string, client *Client) []DiscoveredDevice { // DiscoveredDevice should be in models.go
 	var devices []DiscoveredDevice
-	var currentDevice *DiscoveredDevice // Use a pointer to modify the current device being built
+	var currentDevice *DiscoveredDevice
 
 	scanner := bufio.NewScanner(strings.NewReader(output))
-
-	// Regex to find the start of the relevant part of the line after stripping ANSI and log prefix
-	// e.g. "[DIS] Discovered..." -> we want to match after "[DIS] "
-	// This regex is now simpler as we apply it after stripping ANSI and the general log prefix.
-	lineContentPrefixRegex := regexp.MustCompile(`^\[.*?\]\s\[.*?\]\s\[DIS\]\s+`)
-
-	// Regexes for parsing specific key-value pairs from the cleaned line content
-	hostnameRegex := regexp.MustCompile(`^Hostname:\s*(.*)`)
-	ipAddressRegex := regexp.MustCompile(`^IP Address #\d+:\s*(.*)`)
-	portRegex := regexp.MustCompile(`^Port:\s*(\d+)`)
-	vendorIDRegex := regexp.MustCompile(`^Vendor ID:\s*(\d+)`)
-	productIDRegex := regexp.MustCompile(`^Product ID:\s*(\d+)`)
-	longDiscriminatorRegex := regexp.MustCompile(`^Long Discriminator:\s*(\d+)`)
-	pairingHintRegex := regexp.MustCompile(`^Pairing Hint:\s*(\d+)`)
-	instanceNameRegex := regexp.MustCompile(`^Instance Name:\s*([0-9A-Fa-f]+)`)
-	commissioningModeRegex := regexp.MustCompile(`^Commissioning Mode:\s*(\d+)`)
-	// Optional: Add if "Device Name" or "Device Type" (human-readable) appear
-	// deviceNameRegex := regexp.MustCompile(`^Device Name:\s*(.*)`)
-	// deviceTypeHumanRegex := regexp.MustCompile(`^Device Type:\s*(.*)`) // For human-readable type
+	linePrefixRegex := regexp.MustCompile(`^\[.*?\]\s\[.*?\]\s\[DIS\]\s+`)
 
 	for scanner.Scan() {
 		rawLine := scanner.Text()
-		// client.notifyClientLog("discovery_log", "Raw line: "+rawLine) // Log raw line if needed for deep debug
+		strippedLine := stripAnsi(rawLine)
 
-		// Step 1: Strip ANSI escape codes
-		lineAfterAnsiStrip := stripAnsi(rawLine)
-
-		// Step 2: Attempt to remove the general log prefix (timestamp, pid, module)
-		// This makes the line start with the actual content like "Discovered..." or "Hostname:..."
-		contentPart := lineContentPrefixRegex.ReplaceAllString(lineAfterAnsiStrip, "")
+		contentPart := linePrefixRegex.ReplaceAllString(strippedLine, "")
 		trimmedContentPart := strings.TrimSpace(contentPart)
 
-		// Log the processed line that will be used for matching
 		client.notifyClientLog("discovery_log", "Processing content: '"+trimmedContentPart+"'")
 
 		if strings.HasPrefix(trimmedContentPart, "Discovered commissionable/commissioner node:") {
@@ -577,84 +439,83 @@ func parseDiscoveryOutput(output string, client *Client) []DiscoveredDevice {
 				if currentDevice.ID == "" {
 					if currentDevice.InstanceName != "" {
 						currentDevice.ID = fmt.Sprintf("dnsd_instance_%s", currentDevice.InstanceName)
-					} else { // Fallback if instance name is somehow empty but discriminator is not
+					} else {
 						currentDevice.ID = fmt.Sprintf("dnsd_vid%s_pid%s_disc%s", currentDevice.VendorID, currentDevice.ProductID, currentDevice.Discriminator)
 					}
 				}
-				if currentDevice.Name == "" { // Ensure a name
+				if currentDevice.Name == "" {
 					if currentDevice.InstanceName != "" {
 						currentDevice.Name = fmt.Sprintf("MatterDevice-%s", currentDevice.InstanceName)
-					} else {
+					} else if currentDevice.VendorID != "" && currentDevice.ProductID != "" {
 						currentDevice.Name = fmt.Sprintf("MatterDevice-VID%s-PID%s", currentDevice.VendorID, currentDevice.ProductID)
+					} else {
+						currentDevice.Name = "Unknown Matter Device"
 					}
 				}
 				devices = append(devices, *currentDevice)
 				client.notifyClientLog("discovery_log", fmt.Sprintf("Completed parsing device: %+v", *currentDevice))
 			}
-			currentDevice = &DiscoveredDevice{} // Initialize new device
-			client.notifyClientLog("discovery_log", "New device block started.")
-			continue // Move to next line
+			currentDevice = &DiscoveredDevice{}
+			client.notifyClientLog("discovery_log", "New device block started by 'Discovered commissionable/commissioner node:'.")
+			continue
 		}
 
-		if currentDevice != nil { // Only parse fields if we are inside a device block
-			if m := hostnameRegex.FindStringSubmatch(trimmedContentPart); len(m) > 1 {
-				currentDevice.Name = strings.TrimSpace(m[1]) // Use Hostname as Name
+		if currentDevice != nil {
+			var val string
+			if val = extractValueAfterKey(trimmedContentPart, "Hostname:"); val != "" {
+				currentDevice.Name = val
 				client.notifyClientLog("discovery_log", fmt.Sprintf("Parsed Hostname (as Name): %s", currentDevice.Name))
-			} else if m := ipAddressRegex.FindStringSubmatch(trimmedContentPart); len(m) > 1 {
-				// Storing IP address is optional, depends on DiscoveredDevice struct
-				// If you added IPAddress to struct: currentDevice.IPAddress = strings.TrimSpace(m[1])
-				client.notifyClientLog("discovery_log", fmt.Sprintf("Parsed IP Address: %s", strings.TrimSpace(m[1])))
-			} else if m := portRegex.FindStringSubmatch(trimmedContentPart); len(m) > 1 {
-				// Storing Port is optional
-				// If you added Port to struct: currentDevice.Port = strings.TrimSpace(m[1])
-				client.notifyClientLog("discovery_log", fmt.Sprintf("Parsed Port: %s", strings.TrimSpace(m[1])))
-			} else if m := vendorIDRegex.FindStringSubmatch(trimmedContentPart); len(m) > 1 {
-				currentDevice.VendorID = strings.TrimSpace(m[1])
+			} else if val = extractValueAfterKey(trimmedContentPart, "IP Address #1:"); val != "" {
+				client.notifyClientLog("discovery_log", fmt.Sprintf("Parsed IP Address: %s", val))
+			} else if val = extractValueAfterKey(trimmedContentPart, "Port:"); val != "" {
+				client.notifyClientLog("discovery_log", fmt.Sprintf("Parsed Port: %s", val))
+			} else if val = extractValueAfterKey(trimmedContentPart, "Vendor ID:"); val != "" {
+				currentDevice.VendorID = val
 				client.notifyClientLog("discovery_log", fmt.Sprintf("Parsed Vendor ID: %s", currentDevice.VendorID))
-			} else if m := productIDRegex.FindStringSubmatch(trimmedContentPart); len(m) > 1 {
-				currentDevice.ProductID = strings.TrimSpace(m[1])
+			} else if val = extractValueAfterKey(trimmedContentPart, "Product ID:"); val != "" {
+				currentDevice.ProductID = val
 				client.notifyClientLog("discovery_log", fmt.Sprintf("Parsed Product ID: %s", currentDevice.ProductID))
-			} else if m := longDiscriminatorRegex.FindStringSubmatch(trimmedContentPart); len(m) > 1 {
-				currentDevice.Discriminator = strings.TrimSpace(m[1]) // Using Long Discriminator
+			} else if val = extractValueAfterKey(trimmedContentPart, "Long Discriminator:"); val != "" {
+				currentDevice.Discriminator = val
 				client.notifyClientLog("discovery_log", fmt.Sprintf("Parsed Long Discriminator: %s", currentDevice.Discriminator))
-			} else if m := pairingHintRegex.FindStringSubmatch(trimmedContentPart); len(m) > 1 {
-				if ph, err := strconv.ParseUint(strings.TrimSpace(m[1]), 10, 16); err == nil {
+			} else if val = extractValueAfterKey(trimmedContentPart, "Pairing Hint:"); val != "" {
+				if ph, err := strconv.ParseUint(val, 10, 16); err == nil {
 					currentDevice.PairingHint = uint16(ph)
 					client.notifyClientLog("discovery_log", fmt.Sprintf("Parsed Pairing Hint: %d", currentDevice.PairingHint))
 				} else {
-					client.notifyClientLog("discovery_log", fmt.Sprintf("Error parsing Pairing Hint '%s': %v", m[1], err))
+					client.notifyClientLog("discovery_log", fmt.Sprintf("Error parsing Pairing Hint '%s': %v", val, err))
 				}
-			} else if m := instanceNameRegex.FindStringSubmatch(trimmedContentPart); len(m) > 1 {
-				currentDevice.InstanceName = strings.TrimSpace(m[1])
+			} else if val = extractValueAfterKey(trimmedContentPart, "Instance Name:"); val != "" {
+				currentDevice.InstanceName = val
 				client.notifyClientLog("discovery_log", fmt.Sprintf("Parsed Instance Name: %s", currentDevice.InstanceName))
-			} else if m := commissioningModeRegex.FindStringSubmatch(trimmedContentPart); len(m) > 1 {
-				if cm, err := strconv.ParseUint(strings.TrimSpace(m[1]), 10, 8); err == nil {
+			} else if val = extractValueAfterKey(trimmedContentPart, "Commissioning Mode:"); val != "" {
+				if cm, err := strconv.ParseUint(val, 10, 8); err == nil {
 					currentDevice.CommissioningMode = uint8(cm)
-					// Set a more descriptive Type based on CM if desired
 					switch currentDevice.CommissioningMode {
-					case 1: currentDevice.Type = "BLE"
-					case 2: currentDevice.Type = "OnNetwork (DNS-SD)"
-					default: currentDevice.Type = fmt.Sprintf("CM:%d", currentDevice.CommissioningMode)
+					case 1:
+						currentDevice.Type = "BLE"
+					case 2:
+						currentDevice.Type = "OnNetwork (DNS-SD)"
+					default:
+						currentDevice.Type = fmt.Sprintf("CM:%d", currentDevice.CommissioningMode)
 					}
 					client.notifyClientLog("discovery_log", fmt.Sprintf("Parsed Commissioning Mode: %d (Type: %s)", currentDevice.CommissioningMode, currentDevice.Type))
 				} else {
-					client.notifyClientLog("discovery_log", fmt.Sprintf("Error parsing Commissioning Mode '%s': %v", m[1], err))
+					client.notifyClientLog("discovery_log", fmt.Sprintf("Error parsing Commissioning Mode '%s': %v", val, err))
 				}
 			}
-			// Add other regex checks here (e.g., for Device Name if it's a separate field from Hostname)
 		}
 	}
 
-	// After the loop, add the last processed device if it's valid
 	if currentDevice != nil && (currentDevice.Discriminator != "" || currentDevice.InstanceName != "") {
-		if currentDevice.ID == "" { // Ensure ID is set
+		if currentDevice.ID == "" {
 			if currentDevice.InstanceName != "" {
 				currentDevice.ID = fmt.Sprintf("dnsd_instance_%s", currentDevice.InstanceName)
 			} else {
 				currentDevice.ID = fmt.Sprintf("dnsd_vid%s_pid%s_disc%s", currentDevice.VendorID, currentDevice.ProductID, currentDevice.Discriminator)
 			}
 		}
-		if currentDevice.Name == "" { // Ensure a name
+		if currentDevice.Name == "" {
 			if currentDevice.InstanceName != "" {
 				currentDevice.Name = fmt.Sprintf("MatterDevice-%s", currentDevice.InstanceName)
 			} else if currentDevice.VendorID != "" && currentDevice.ProductID != "" {
@@ -676,32 +537,51 @@ func parseDiscoveryOutput(output string, client *Client) []DiscoveredDevice {
 	return devices
 }
 
+func (c *Client) notifyClientLog(logType string, data string) {
+	msg := ServerMessage{Type: logType, Payload: data} // ServerMessage should be in models.go
+	bytes, err := json.Marshal(msg)
+	if err != nil {
+		log.Printf("Error marshalling log message for client %v: %v", c.conn.RemoteAddr(), err)
+		return
+	}
+	select {
+	case c.send <- bytes:
+	default:
+		log.Printf("Client %v send channel full, log message dropped: %s", c.conn.RemoteAddr(), logType)
+	}
+}
 
-// readAttribute function to read a specific attribute from a device
+func (c *Client) notifyClient(msgType string, payload interface{}) {
+	msg := ServerMessage{Type: msgType, Payload: payload} // ServerMessage should be in models.go
+	bytes, err := json.Marshal(msg)
+	if err != nil {
+		log.Printf("Error marshalling server message for client %v: %v", c.conn.RemoteAddr(), err)
+		return
+	}
+	select {
+	case c.send <- bytes:
+	default:
+		log.Printf("Client %v send channel full, message dropped: %s", c.conn.RemoteAddr(), msgType)
+	}
+}
+
+func (c *Client) sendPayload(msgType string, payload interface{}) {
+	c.notifyClient(msgType, payload)
+}
+
 func readAttribute(client *Client, nodeID, endpointID, clusterName, attributeName string) {
 	log.Printf("Attempting to read attribute %s.%s for Node %s Endpoint %s", clusterName, attributeName, nodeID, endpointID)
-	client.notifyClientLog("commissioning_log", fmt.Sprintf("Reading attribute %s.%s for Node %s...", clusterName, attributeName, nodeID)) // Use a generic log type or command_response
-
-	// chip-tool <cluster_lowercase> read <attribute_lowercase> <nodeId> <endpointId>
-	cmdArgs := []string{
-		strings.ToLower(clusterName),
-		"read",
-		strings.ToLower(attributeName), // chip-tool usually expects PascalCase for attribute names in read commands
-		nodeID,
-		endpointID,
-	}
+	client.notifyClientLog("commissioning_log", fmt.Sprintf("Reading attribute %s.%s for Node %s...", clusterName, attributeName, nodeID))
+	cmdArgs := []string{strings.ToLower(clusterName), "read", attributeName, nodeID, endpointID} // Attribute name often PascalCase for chip-tool read
 	cmd := exec.Command(chipToolPath, cmdArgs...)
-	
 	var outBuf, errBuf strings.Builder
 	cmd.Stdout = &outBuf
 	cmd.Stderr = &errBuf
-
 	err := cmd.Run()
 	stdout := outBuf.String()
 	stderr := errBuf.String()
 	cmdOutput := fmt.Sprintf("Read Attribute Stdout:\n%s\nRead Attribute Stderr:\n%s", stdout, stderr)
 	log.Println(cmdOutput)
-
 
 	if err != nil {
 		log.Printf("Error reading attribute %s.%s for Node %s: %v. Output: %s", clusterName, attributeName, nodeID, err, cmdOutput)
@@ -709,61 +589,42 @@ func readAttribute(client *Client, nodeID, endpointID, clusterName, attributeNam
 		return
 	}
 
-	// Parse the output to find the value. This is highly dependent on chip-tool's output format.
-	// Example output for OnOff: "CHIP:DMG: Value = true" or "CHIP:DMG: Value = false"
-	// Example output for LevelControl CurrentLevel: "CHIP:DMG: Value = 128"
-	// Example output for BasicInformation NodeLabel: "CHIP:DMG: Value = "My Light"" (string value)
-	
 	var value interface{}
 	parsed := false
-
-	// Try to parse common patterns
-	reValue := regexp.MustCompile(`CHIP:DMG: Value = (.*)`) // General value capture
+	reValue := regexp.MustCompile(`CHIP:DMG: Value = (.*)`)
 	matches := reValue.FindStringSubmatch(stdout)
 
 	if len(matches) > 1 {
 		valStr := strings.TrimSpace(matches[1])
-		// Try to convert to boolean
 		if bVal, err := strconv.ParseBool(valStr); err == nil {
 			value = bVal
 			parsed = true
-		} else if iVal, err := strconv.ParseInt(valStr, 10, 64); err == nil { // Try to convert to int
+		} else if iVal, err := strconv.ParseInt(valStr, 10, 64); err == nil {
 			value = iVal
 			parsed = true
-		} else if fVal, err := strconv.ParseFloat(valStr, 64); err == nil { // Try to convert to float
+		} else if fVal, err := strconv.ParseFloat(valStr, 64); err == nil {
 			value = fVal
 			parsed = true
 		} else {
-			// Assume string if it's quoted, or just take as is
 			if strings.HasPrefix(valStr, `"`) && strings.HasSuffix(valStr, `"`) {
 				value = strings.Trim(valStr, `"`)
 			} else {
-				value = valStr // Raw string
+				value = valStr
 			}
 			parsed = true
 		}
 	}
-
 	if !parsed {
 		log.Printf("Could not parse value for attribute %s.%s from output: %s", clusterName, attributeName, stdout)
 		client.notifyClientLog("commissioning_log", fmt.Sprintf("Could not parse value for %s.%s", clusterName, attributeName))
-		// Send raw output if parsing fails but command succeeded
-		value = "Raw: " + stdout 
+		value = "Raw: " + stdout
 	}
-	
 	log.Printf("Attribute %s.%s for Node %s read. Value: %v (Parsed: %t)", clusterName, attributeName, nodeID, value, parsed)
-
-	client.sendPayload("attribute_update", AttributeUpdatePayload{
-		NodeID:    nodeID,
-		EndpointID: endpointID,
-		Cluster:   clusterName,
-		Attribute: attributeName,
-		Value:     value,
+	client.sendPayload("attribute_update", AttributeUpdatePayload{ // Assumes AttributeUpdatePayload is in models.go
+		NodeID:    nodeID, EndpointID: endpointID, Cluster: clusterName, Attribute: attributeName, Value: value,
 	})
 }
 
-
-// **** NEW FUNCTION: startAttributeSubscription ****
 func startAttributeSubscription(client *Client, nodeID, endpointID, clusterName, attributeName, minInterval, maxInterval string) {
 	subscriptionID := fmt.Sprintf("sub-%s-%s-%s-%s", nodeID, endpointID, clusterName, attributeName)
 	log.Printf("[%s] Starting subscription for Node %s, Endpoint %s, Cluster %s, Attribute %s, MinInterval %ss, MaxInterval %ss",
@@ -771,35 +632,10 @@ func startAttributeSubscription(client *Client, nodeID, endpointID, clusterName,
 
 	client.notifyClientLog("subscription_log", fmt.Sprintf("Attempting to subscribe to %s/%s on Node %s EP%s", clusterName, attributeName, nodeID, endpointID))
 
-	// chip-tool <cluster_lowercase> subscribe <attribute_pascalcase> <min_interval> <max_interval> <node_id> <endpoint_id>
-	// Note: chip-tool expects PascalCase for attribute names in subscribe commands.
 	cmdArgs := []string{
-		strings.ToLower(clusterName),
-		"subscribe",
-		attributeName, // PascalCase
-		minInterval,
-		maxInterval,
-		nodeID,
-		endpointID,
+		strings.ToLower(clusterName), "subscribe", attributeName, minInterval, maxInterval, nodeID, endpointID,
 	}
-	
-	// For robust management, use context to allow canceling the command.
-	// ctx, cancel := context.WithCancel(context.Background())
-	// cmd := exec.CommandContext(ctx, chipToolPath, cmdArgs...)
 	cmd := exec.Command(chipToolPath, cmdArgs...)
-
-	// TODO: Store the 'cmd' and 'cancel' function in the Client struct (e.g., in a map keyed by subscriptionID)
-	// to allow stopping this subscription later (e.g., on client disconnect or explicit unsubscribe message).
-	// client.subMu.Lock()
-	// client.activeSubscriptions[subscriptionID] = cmd
-	// client.subMu.Unlock()
-	// defer func() {
-	// 	 client.subMu.Lock()
-	// 	 delete(client.activeSubscriptions, subscriptionID)
-	// 	 client.subMu.Unlock()
-	// 	 cancel() // Ensure context is cancelled if command finishes or goroutine exits
-	// }()
-
 
 	stdoutPipe, err := cmd.StdoutPipe()
 	if err != nil {
@@ -823,8 +659,7 @@ func startAttributeSubscription(client *Client, nodeID, endpointID, clusterName,
 	log.Printf("[%s] chip-tool subscribe process started (PID: %d). Monitoring output.", subscriptionID, cmd.Process.Pid)
 	client.notifyClientLog("subscription_log", fmt.Sprintf("Subscription process started for %s/%s.", clusterName, attributeName))
 
-	// Goroutine to read stderr
-	go func() {
+	go func() { // Stderr
 		scanner := bufio.NewScanner(stderrPipe)
 		for scanner.Scan() {
 			line := scanner.Text()
@@ -836,78 +671,52 @@ func startAttributeSubscription(client *Client, nodeID, endpointID, clusterName,
 		}
 		log.Printf("[%s] Stderr pipe closed.", subscriptionID)
 	}()
-
-	// Goroutine to read stdout and parse reports
-	go func() {
+	go func() { // Stdout
 		scanner := bufio.NewScanner(stdoutPipe)
-		// Regex to parse the data part of a report
-		// Example: CHIP:DMG:    Data = true (BOOLEAN)
-		// Example: CHIP:DMG:    Data = 123 (INT16S)
-		// Example: CHIP:DMG:    Data = "Hello" (UTF8S) - Note: chip-tool might not always quote strings in this output.
 		reDataLine := regexp.MustCompile(`CHIP:DMG:\s+Data = (.*) \((.*)\)`)
-		// Regex to find the start of a report block
 		reReportStart := regexp.MustCompile(`CHIP:DMG: ReportDataMessage =`)
-		// Regex to find the attribute path (optional, for verification)
-		// reAttributePath := regexp.MustCompile(`AttributePath = Cluster: (\d+) Endpoint: (\d+) Attribute: (\d+)`)
-
 		inReportBlock := false
-
 		for scanner.Scan() {
 			line := scanner.Text()
-			log.Printf("[%s] Stdout: %s", subscriptionID, line) // Log all stdout for debugging
-
+			log.Printf("[%s] Stdout: %s", subscriptionID, line)
 			if reReportStart.MatchString(line) {
 				inReportBlock = true
 				log.Printf("[%s] Detected report start.", subscriptionID)
 				continue
 			}
-
 			if inReportBlock {
 				if matches := reDataLine.FindStringSubmatch(line); len(matches) == 3 {
 					valStr := strings.TrimSpace(matches[1])
 					typeStr := strings.TrimSpace(matches[2])
-					log.Printf("[%s] Parsed data line: ValueStr='%s', TypeStr='%s'", subscriptionID, valStr, typeStr)
-
 					var value interface{}
 					var parseErr error
-
 					switch typeStr {
 					case "BOOLEAN":
 						value, parseErr = strconv.ParseBool(valStr)
-					case "INT8S", "INT16S", "INT32S", "INT64S", "UINT8", "UINT16", "UINT32", "UINT64", "INT8U", "INT16U", "INT32U", "INT64U": // Common integer types
+					case "INT8S", "INT16S", "INT32S", "INT64S", "UINT8", "UINT16", "UINT32", "UINT64", "INT8U", "INT16U", "INT32U", "INT64U":
 						value, parseErr = strconv.ParseInt(valStr, 10, 64)
-					case "FLOAT", "DOUBLE": // Common float types
+					case "FLOAT", "DOUBLE":
 						value, parseErr = strconv.ParseFloat(valStr, 64)
-					case "UTF8S", "OCTET_STRING": // String types
-						// chip-tool might or might not quote strings. Trim quotes if present.
+					case "UTF8S", "OCTET_STRING":
 						if strings.HasPrefix(valStr, `"`) && strings.HasSuffix(valStr, `"`) {
 							value = strings.Trim(valStr, `"`)
 						} else {
 							value = valStr
 						}
 					default:
-						log.Printf("[%s] Unhandled data type from subscription: %s. Storing as string.", subscriptionID, typeStr)
-						value = valStr // Store as raw string if type is unknown
+						log.Printf("[%s] Unhandled data type from subscription: %s.", subscriptionID, typeStr)
+						value = valStr
 					}
-
 					if parseErr != nil {
-						log.Printf("[%s] Error parsing value '%s' as type '%s': %v. Storing as raw string.", subscriptionID, valStr, typeStr, parseErr)
-						value = valStr // Fallback to raw string on parsing error
+						log.Printf("[%s] Error parsing value '%s' as type '%s': %v.", subscriptionID, valStr, typeStr, parseErr)
+						value = valStr
 					}
-					
-					log.Printf("[%s] Sending attribute_update: Node=%s, Cls=%s, Attr=%s, Val=%v", subscriptionID, nodeID, clusterName, attributeName, value)
-					client.sendPayload("attribute_update", AttributeUpdatePayload{
-						NodeID:    nodeID,
-						EndpointID: endpointID,
-						Cluster:   clusterName, 
-						Attribute: attributeName, 
-						Value:     value,
-					})
-					inReportBlock = false // Reset for next report, simple assumption one data line per report block
-				} else if strings.Contains(line, "CHIP:DMG: }") { // End of a report block
-                    inReportBlock = false
+					client.sendPayload("attribute_update", AttributeUpdatePayload{NodeID: nodeID, EndpointID: endpointID, Cluster: clusterName, Attribute: attributeName, Value: value}) // Assumes AttributeUpdatePayload is in models.go
+					inReportBlock = false
+				} else if strings.Contains(line, "CHIP:DMG: }") {
+					inReportBlock = false
 					log.Printf("[%s] Detected report end.", subscriptionID)
-                }
+				}
 			}
 		}
 		if err := scanner.Err(); err != nil {
@@ -915,11 +724,8 @@ func startAttributeSubscription(client *Client, nodeID, endpointID, clusterName,
 			client.notifyClientLog("subscription_log", fmt.Sprintf("[%s] Error reading subscription stream: %v", attributeName, err))
 		}
 		log.Printf("[%s] Stdout pipe closed.", subscriptionID)
-
-		// Wait for the command to finish
 		err = cmd.Wait()
 		log.Printf("[%s] chip-tool subscribe command finished. Exit error: %v", subscriptionID, err)
 		client.notifyClientLog("subscription_log", fmt.Sprintf("Subscription for %s/%s on Node %s ended. Error: %v", clusterName, attributeName, nodeID, err))
-		// TODO: Clean up from client.activeSubscriptions if it was stored
 	}()
 }
