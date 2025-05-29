@@ -207,10 +207,10 @@ func stripAnsi(str string) string {
 func handleClientMessage(client *Client, msg ClientMessage) { // ClientMessage should be defined in models.go
 	switch msg.Type {
 	case "discover_devices":
-		log.Println("Handling discover_devices request (for 'commissionable' devices)")
-		client.notifyClientLog("discovery_log", "Starting 'discover commissionable' via chip-tool...")
+		log.Println("Handling discover_devices request (for 'commissionables' devices)")
+		client.notifyClientLog("discovery_log", "Starting 'discover commissionables' via chip-tool...")
 
-		cmd := exec.Command(chipToolPath, "discover", "commissionable")
+		cmd := exec.Command(chipToolPath, "discover", "commissionabless")
 
 		var outBuf, errBuf strings.Builder
 		cmd.Stdout = &outBuf
@@ -220,20 +220,20 @@ func handleClientMessage(client *Client, msg ClientMessage) { // ClientMessage s
 		stdout := outBuf.String()
 		stderr := errBuf.String()
 
-		log.Printf("chip-tool 'discover commissionable' stdout:\n%s", stdout)
+		log.Printf("chip-tool 'discover commissionables' stdout:\n%s", stdout)
 		if stderr != "" {
-			log.Printf("chip-tool 'discover commissionable' stderr:\n%s", stderr)
+			log.Printf("chip-tool 'discover commissionables' stderr:\n%s", stderr)
 		}
 
 		if err != nil {
-			errMsg := fmt.Sprintf("Error running chip-tool 'discover commissionable': %v. Stderr: %s", err, stderr)
+			errMsg := fmt.Sprintf("Error running chip-tool 'discover commissionables': %v. Stderr: %s", err, stderr)
 			log.Println(errMsg)
 			client.notifyClientLog("discovery_log", "Error during discovery: "+errMsg)
 			client.sendPayload("discovery_result", DiscoveryResultPayload{Devices: []DiscoveredDevice{}, Error: errMsg}) // Assumes DiscoveryResultPayload is in models.go
 			return
 		}
 
-		client.notifyClientLog("discovery_log", "Discovery command 'discover commissionable' finished. Output processing...")
+		client.notifyClientLog("discovery_log", "Discovery command 'discover commissionables' finished. Output processing...")
 		discovered := parseDiscoveryOutput(stdout, client)
 		client.sendPayload("discovery_result", DiscoveryResultPayload{Devices: discovered})
 
@@ -411,118 +411,126 @@ func handleClientMessage(client *Client, msg ClientMessage) { // ClientMessage s
 
 // Helper function to extract value after a known key (like "Hostname: ")
 func extractValueAfterKey(line, key string) string {
+	// Ensure the key has a colon and a space for more precise matching,
+	// or make the key parameter include it.
+	// For this example, assuming 'key' is like "Hostname:" (includes colon)
+	fullKey := key + " " // Add space if keys in output are like "Hostname: value"
+	if strings.HasPrefix(line, fullKey) {
+		return strings.TrimSpace(strings.TrimPrefix(line, fullKey))
+	}
+	// Fallback for keys that might not have a space after colon, or if key includes the space
 	if strings.HasPrefix(line, key) {
 		return strings.TrimSpace(strings.TrimPrefix(line, key))
 	}
 	return ""
 }
 
-// parseDiscoveryOutput parses the output of `chip-tool discover commissionable`
+// parseDiscoveryOutput parses the output of `chip-tool discover commissionables`
 func parseDiscoveryOutput(output string, client *Client) []DiscoveredDevice { // DiscoveredDevice should be in models.go
 	var devices []DiscoveredDevice
 	var currentDevice *DiscoveredDevice
 
 	scanner := bufio.NewScanner(strings.NewReader(output))
-	linePrefixRegex := regexp.MustCompile(`^\[.*?\]\s\[.*?\]\s\[DIS\]\s+`)
 
 	for scanner.Scan() {
 		rawLine := scanner.Text()
-		strippedLine := stripAnsi(rawLine)
+		strippedLine := stripAnsi(rawLine) // Remove ANSI codes first
 
-		contentPart := linePrefixRegex.ReplaceAllString(strippedLine, "")
-		trimmedContentPart := strings.TrimSpace(contentPart)
+		// Find "[DIS]" marker. If not present, this line is likely not relevant device info.
+		disMarker := "[DIS]"
+		idxDis := strings.Index(strippedLine, disMarker)
+		if idxDis == -1 {
+			// Log lines that are not [DIS] for context, but don't try to parse them as device fields
+			// client.notifyClientLog("discovery_log", "Skipping non-DIS line: '"+strippedLine+"'")
+			continue
+		}
 
-		client.notifyClientLog("discovery_log", "Processing content: '"+trimmedContentPart+"'")
+		// Get content after "[DIS]" and trim leading/trailing spaces
+		// Add length of disMarker to disIdx to get start of content after it.
+		contentAfterDis := strings.TrimSpace(strippedLine[idxDis+len(disMarker):])
+		client.notifyClientLog("discovery_log", "Processing content after [DIS]: '"+contentAfterDis+"'")
 
-		if strings.HasPrefix(trimmedContentPart, "Discovered commissionable/commissioner node:") {
+
+		if strings.HasPrefix(contentAfterDis, "Discovered commissionables/commissioner node:") {
+			// If a previous device was being built, finalize and add it.
 			if currentDevice != nil && (currentDevice.Discriminator != "" || currentDevice.InstanceName != "") {
 				if currentDevice.ID == "" {
-					if currentDevice.InstanceName != "" {
-						currentDevice.ID = fmt.Sprintf("dnsd_instance_%s", currentDevice.InstanceName)
-					} else {
-						currentDevice.ID = fmt.Sprintf("dnsd_vid%s_pid%s_disc%s", currentDevice.VendorID, currentDevice.ProductID, currentDevice.Discriminator)
-					}
+					if currentDevice.InstanceName != "" { currentDevice.ID = fmt.Sprintf("dnsd_instance_%s", currentDevice.InstanceName)
+					} else { currentDevice.ID = fmt.Sprintf("dnsd_vid%s_pid%s_disc%s", currentDevice.VendorID, currentDevice.ProductID, currentDevice.Discriminator) }
 				}
 				if currentDevice.Name == "" {
-					if currentDevice.InstanceName != "" {
-						currentDevice.Name = fmt.Sprintf("MatterDevice-%s", currentDevice.InstanceName)
-					} else if currentDevice.VendorID != "" && currentDevice.ProductID != "" {
-						currentDevice.Name = fmt.Sprintf("MatterDevice-VID%s-PID%s", currentDevice.VendorID, currentDevice.ProductID)
-					} else {
-						currentDevice.Name = "Unknown Matter Device"
-					}
+					if currentDevice.InstanceName != "" { currentDevice.Name = fmt.Sprintf("MatterDevice-%s", currentDevice.InstanceName)
+					} else if currentDevice.VendorID != "" && currentDevice.ProductID != "" { currentDevice.Name = fmt.Sprintf("MatterDevice-VID%s-PID%s", currentDevice.VendorID, currentDevice.ProductID)
+					} else { currentDevice.Name = "Unknown Matter Device" }
 				}
 				devices = append(devices, *currentDevice)
 				client.notifyClientLog("discovery_log", fmt.Sprintf("Completed parsing device: %+v", *currentDevice))
 			}
-			currentDevice = &DiscoveredDevice{}
-			client.notifyClientLog("discovery_log", "New device block started by 'Discovered commissionable/commissioner node:'.")
-			continue
+			currentDevice = &DiscoveredDevice{} // Start a new device
+			client.notifyClientLog("discovery_log", "New device block started by 'Discovered commissionables/commissioner node:'.")
+			continue // This line itself doesn't have key-value data for the device
 		}
 
-		if currentDevice != nil {
+		if currentDevice != nil { // Only process lines if we're in a device block
 			var val string
-			if val = extractValueAfterKey(trimmedContentPart, "Hostname:"); val != "" {
-				currentDevice.Name = val
+			// Note: The keys passed to extractValueAfterKey should exactly match the start of the string
+			// *after* the "[DIS] " part and trimming. E.g., "Hostname:"
+			if val = extractValueAfterKey(contentAfterDis, "Hostname:"); val != "" {
+				currentDevice.Name = val // Using Hostname as Name
 				client.notifyClientLog("discovery_log", fmt.Sprintf("Parsed Hostname (as Name): %s", currentDevice.Name))
-			} else if val = extractValueAfterKey(trimmedContentPart, "IP Address #1:"); val != "" {
+			} else if val = extractValueAfterKey(contentAfterDis, "IP Address #1:"); val != "" {
+				// currentDevice.IPAddress = val // Add IPAddress field to DiscoveredDevice struct if needed
 				client.notifyClientLog("discovery_log", fmt.Sprintf("Parsed IP Address: %s", val))
-			} else if val = extractValueAfterKey(trimmedContentPart, "Port:"); val != "" {
+			} else if val = extractValueAfterKey(contentAfterDis, "Port:"); val != "" {
+				// currentDevice.Port = val // Add Port field to DiscoveredDevice struct if needed
 				client.notifyClientLog("discovery_log", fmt.Sprintf("Parsed Port: %s", val))
-			} else if val = extractValueAfterKey(trimmedContentPart, "Vendor ID:"); val != "" {
+			} else if val = extractValueAfterKey(contentAfterDis, "Vendor ID:"); val != "" {
 				currentDevice.VendorID = val
 				client.notifyClientLog("discovery_log", fmt.Sprintf("Parsed Vendor ID: %s", currentDevice.VendorID))
-			} else if val = extractValueAfterKey(trimmedContentPart, "Product ID:"); val != "" {
+			} else if val = extractValueAfterKey(contentAfterDis, "Product ID:"); val != "" {
 				currentDevice.ProductID = val
 				client.notifyClientLog("discovery_log", fmt.Sprintf("Parsed Product ID: %s", currentDevice.ProductID))
-			} else if val = extractValueAfterKey(trimmedContentPart, "Long Discriminator:"); val != "" {
+			} else if val = extractValueAfterKey(contentAfterDis, "Long Discriminator:"); val != "" {
 				currentDevice.Discriminator = val
 				client.notifyClientLog("discovery_log", fmt.Sprintf("Parsed Long Discriminator: %s", currentDevice.Discriminator))
-			} else if val = extractValueAfterKey(trimmedContentPart, "Pairing Hint:"); val != "" {
+			} else if val = extractValueAfterKey(contentAfterDis, "Pairing Hint:"); val != "" {
 				if ph, err := strconv.ParseUint(val, 10, 16); err == nil {
 					currentDevice.PairingHint = uint16(ph)
 					client.notifyClientLog("discovery_log", fmt.Sprintf("Parsed Pairing Hint: %d", currentDevice.PairingHint))
 				} else {
 					client.notifyClientLog("discovery_log", fmt.Sprintf("Error parsing Pairing Hint '%s': %v", val, err))
 				}
-			} else if val = extractValueAfterKey(trimmedContentPart, "Instance Name:"); val != "" {
+			} else if val = extractValueAfterKey(contentAfterDis, "Instance Name:"); val != "" {
 				currentDevice.InstanceName = val
 				client.notifyClientLog("discovery_log", fmt.Sprintf("Parsed Instance Name: %s", currentDevice.InstanceName))
-			} else if val = extractValueAfterKey(trimmedContentPart, "Commissioning Mode:"); val != "" {
+			} else if val = extractValueAfterKey(contentAfterDis, "Commissioning Mode:"); val != "" {
 				if cm, err := strconv.ParseUint(val, 10, 8); err == nil {
 					currentDevice.CommissioningMode = uint8(cm)
 					switch currentDevice.CommissioningMode {
-					case 1:
-						currentDevice.Type = "BLE"
-					case 2:
-						currentDevice.Type = "OnNetwork (DNS-SD)"
-					default:
-						currentDevice.Type = fmt.Sprintf("CM:%d", currentDevice.CommissioningMode)
+					case 1: currentDevice.Type = "BLE"
+					case 2: currentDevice.Type = "OnNetwork (DNS-SD)"
+					default: currentDevice.Type = fmt.Sprintf("CM:%d", currentDevice.CommissioningMode)
 					}
 					client.notifyClientLog("discovery_log", fmt.Sprintf("Parsed Commissioning Mode: %d (Type: %s)", currentDevice.CommissioningMode, currentDevice.Type))
 				} else {
 					client.notifyClientLog("discovery_log", fmt.Sprintf("Error parsing Commissioning Mode '%s': %v", val, err))
 				}
 			}
+			// Add more `else if val = extractValueAfterKey(...)` for other fields if needed
+			// e.g. "Supports Commissioner Generated Passcode:"
 		}
 	}
 
+	// After the loop, add the last processed device if it's valid
 	if currentDevice != nil && (currentDevice.Discriminator != "" || currentDevice.InstanceName != "") {
 		if currentDevice.ID == "" {
-			if currentDevice.InstanceName != "" {
-				currentDevice.ID = fmt.Sprintf("dnsd_instance_%s", currentDevice.InstanceName)
-			} else {
-				currentDevice.ID = fmt.Sprintf("dnsd_vid%s_pid%s_disc%s", currentDevice.VendorID, currentDevice.ProductID, currentDevice.Discriminator)
-			}
+			if currentDevice.InstanceName != "" { currentDevice.ID = fmt.Sprintf("dnsd_instance_%s", currentDevice.InstanceName)
+			} else { currentDevice.ID = fmt.Sprintf("dnsd_vid%s_pid%s_disc%s", currentDevice.VendorID, currentDevice.ProductID, currentDevice.Discriminator) }
 		}
 		if currentDevice.Name == "" {
-			if currentDevice.InstanceName != "" {
-				currentDevice.Name = fmt.Sprintf("MatterDevice-%s", currentDevice.InstanceName)
-			} else if currentDevice.VendorID != "" && currentDevice.ProductID != "" {
-				currentDevice.Name = fmt.Sprintf("MatterDevice-VID%s-PID%s", currentDevice.VendorID, currentDevice.ProductID)
-			} else {
-				currentDevice.Name = "Unknown Matter Device"
-			}
+			if currentDevice.InstanceName != "" { currentDevice.Name = fmt.Sprintf("MatterDevice-%s", currentDevice.InstanceName)
+			} else if currentDevice.VendorID != "" && currentDevice.ProductID != "" { currentDevice.Name = fmt.Sprintf("MatterDevice-VID%s-PID%s", currentDevice.VendorID, currentDevice.ProductID)
+			} else { currentDevice.Name = "Unknown Matter Device" }
 		}
 		devices = append(devices, *currentDevice)
 		client.notifyClientLog("discovery_log", fmt.Sprintf("Completed parsing final device: %+v", *currentDevice))
