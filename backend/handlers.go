@@ -117,61 +117,38 @@ func (c *Client) writePump() {
 	ticker := time.NewTicker(pingPeriod)
 	defer func() {
 		ticker.Stop()
-		c.conn.Close() // Ensure connection is closed if writePump exits
+		c.conn.Close()
 		log.Printf("Client %v disconnected from writePump", c.conn.RemoteAddr())
 	}()
 	for {
 		select {
 		case message, ok := <-c.send:
-			c.writeMu.Lock()
+			c.writeMu.Lock() // Protect concurrent writes
 			_ = c.conn.SetWriteDeadline(time.Now().Add(writeWait))
 			if !ok {
+				// The hub closed the channel.
 				log.Printf("Client %v send channel closed, sending close message.", c.conn.RemoteAddr())
 				_ = c.conn.WriteMessage(websocket.CloseMessage, []byte{})
 				c.writeMu.Unlock()
 				return
 			}
 
-			w, err := c.conn.NextWriter(websocket.TextMessage)
-			if err != nil {
-				log.Printf("Client %v error getting next writer: %v", c.conn.RemoteAddr(), err)
-				c.writeMu.Unlock()
-				return
-			}
-			_, err = w.Write(message)
+			// Send the message as a whole. No batching with NextWriter.
+			err := c.conn.WriteMessage(websocket.TextMessage, message)
 			if err != nil {
 				log.Printf("Client %v error writing message: %v", c.conn.RemoteAddr(), err)
-				_ = w.Close()
 				c.writeMu.Unlock()
-				return
-			}
-
-			n := len(c.send)
-			for i := 0; i < n; i++ {
-				_, _ = w.Write([]byte{'\n'})
-				_, err = w.Write(<-c.send)
-				if err != nil {
-					log.Printf("Client %v error writing queued message: %v", c.conn.RemoteAddr(), err)
-					_ = w.Close()
-					c.writeMu.Unlock()
-					return
-				}
-			}
-
-			if err := w.Close(); err != nil {
-				log.Printf("Client %v error closing writer: %v", c.conn.RemoteAddr(), err)
-				c.writeMu.Unlock()
-				return
+				return // Exit on write error
 			}
 			c.writeMu.Unlock()
 
 		case <-ticker.C:
-			c.writeMu.Lock()
+			c.writeMu.Lock() // Protect concurrent writes
 			_ = c.conn.SetWriteDeadline(time.Now().Add(writeWait))
 			if err := c.conn.WriteMessage(websocket.PingMessage, nil); err != nil {
 				log.Printf("Client %v error sending ping: %v", c.conn.RemoteAddr(), err)
 				c.writeMu.Unlock()
-				return
+				return // Exit if ping fails
 			}
 			c.writeMu.Unlock()
 		}
