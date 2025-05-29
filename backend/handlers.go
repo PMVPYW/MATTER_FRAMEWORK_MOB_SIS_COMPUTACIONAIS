@@ -187,7 +187,6 @@ func handleClientMessage(client *Client, msg ClientMessage) { // ClientMessage s
 		log.Println("Handling discover_devices request (for 'commissionables' devices)")
 		client.notifyClientLog("discovery_log", "Starting 'discover commissionables' via chip-tool...")
 
-		// **** CORRECTED COMMAND (plural) ****
 		cmd := exec.Command(chipToolPath, "discover", "commissionables")
 
 		var outBuf, errBuf strings.Builder
@@ -224,26 +223,37 @@ func handleClientMessage(client *Client, msg ClientMessage) { // ClientMessage s
 			return
 		}
 		log.Printf("Handling commission_device request: %+v", payload)
-		if payload.SetupCode == "" || payload.NodeIDToAssign == "" || payload.Discriminator == "" {
-			client.notifyClientLog("commissioning_log", "Missing discriminator, setupCode, or nodeIdToAssign for commissioning.")
-			client.sendPayload("commissioning_status", CommissioningStatusPayload{Success: false, Error: "Missing discriminator, setupCode, or nodeIdToAssign.", OriginalDiscriminator: payload.Discriminator})
+		if payload.SetupCode == "" || payload.NodeIDToAssign == "" { // Discriminator might not be strictly needed for 'pairing code' if device is uniquely identified by IP context
+			client.notifyClientLog("commissioning_log", "Missing setupCode or nodeIdToAssign for commissioning.")
+			client.sendPayload("commissioning_status", CommissioningStatusPayload{Success: false, Error: "Missing setupCode or nodeIdToAssign.", OriginalDiscriminator: payload.Discriminator})
 			return
 		}
-		client.notifyClientLog("commissioning_log", fmt.Sprintf("Starting commissioning for Discriminator %s, proposed Node ID %s with setup code %s", payload.Discriminator, payload.NodeIDToAssign, payload.SetupCode))
-		tempCommissioningNodeID := "112233"
-		cmdArgs := []string{"pairing", "ble-discriminator", payload.Discriminator, payload.SetupCode, tempCommissioningNodeID}
-		// if paaTrustStorePath != "" { cmdArgs = append(cmdArgs, "--paa-trust-store-path", paaTrustStorePath) }
+
+		client.notifyClientLog("commissioning_log", fmt.Sprintf("Attempting to commission Node ID %s with setup code %s (using 'pairing code')", payload.NodeIDToAssign, payload.SetupCode))
+
+		// **** UPDATED Commissioning Command for IP-based devices ****
+		// Using `pairing code` which is suitable for devices already on the IP network.
+		// The payload.NodeIDToAssign is a suggestion from the frontend for the new node.
+		// chip-tool will manage the actual assignment.
+		cmdArgs := []string{"pairing", "code", payload.NodeIDToAssign, payload.SetupCode}
+		
+		// if paaTrustStorePath != "" { // Add PAA trust store if needed for production devices
+		//    cmdArgs = append(cmdArgs, "--paa-trust-store-path", paaTrustStorePath)
+		// }
+
 		cmd := exec.Command(chipToolPath, cmdArgs...)
 		client.notifyClientLog("commissioning_log", fmt.Sprintf("Executing: %s %s", chipToolPath, strings.Join(cmdArgs, " ")))
-		var outBuf, errBuf strings.Builder // Re-declare for this scope
+		
+		var outBuf, errBuf strings.Builder 
 		cmd.Stdout = &outBuf
 		cmd.Stderr = &errBuf
-		err := cmd.Run()            // Re-declare err for this scope
-		stdout := outBuf.String()   // Re-declare stdout for this scope
-		stderr := errBuf.String()   // Re-declare stderr for this scope
+		err := cmd.Run()            
+		stdout := outBuf.String()   
+		stderr := errBuf.String()   
 		commissioningOutput := fmt.Sprintf("Stdout:\n%s\nStderr:\n%s", stdout, stderr)
 		log.Printf("chip-tool pairing output:\n%s", commissioningOutput)
 		client.notifyClientLog("commissioning_log", "Commissioning command output:\n"+commissioningOutput)
+
 		if err != nil {
 			errMsg := fmt.Sprintf("Error commissioning device: %v. Output: %s", err, commissioningOutput)
 			log.Println(errMsg)
@@ -251,13 +261,19 @@ func handleClientMessage(client *Client, msg ClientMessage) { // ClientMessage s
 				Success:               false,
 				Error:                 errMsg,
 				Details:               commissioningOutput,
-				OriginalDiscriminator: payload.Discriminator,
+				OriginalDiscriminator: payload.Discriminator, // Still useful to send back for frontend context
 				DiscriminatorAssociatedWithRequest: payload.Discriminator,
 			})
 			return
 		}
+		
+		// Parse commissioning output for success and actual Node ID
 		reNodeID := regexp.MustCompile(`Successfully commissioned device with node ID (0x[0-9a-fA-F]+|\d+)`)
-		matches := reNodeID.FindStringSubmatch(stdout)
+		matches := reNodeID.FindStringSubmatch(stdout) // Check stdout first
+		if len(matches) == 0 { // If not in stdout, check stderr as chip-tool can be inconsistent
+			matches = reNodeID.FindStringSubmatch(stderr)
+		}
+		
 		actualNodeID := ""
 		if len(matches) > 1 {
 			actualNodeID = matches[1]
@@ -270,11 +286,12 @@ func handleClientMessage(client *Client, msg ClientMessage) { // ClientMessage s
 				DiscriminatorAssociatedWithRequest: payload.Discriminator,
 			})
 			go readAttribute(client, actualNodeID, "1", "BasicInformation", "NodeLabel")
-		} else if strings.Contains(stdout, "Device commissioning completed with success") || strings.Contains(stdout, "Commissioning success") {
-			log.Printf("Commissioning reported success for discriminator %s, but Node ID not parsed directly from output.", payload.Discriminator)
+		} else if strings.Contains(stdout, "Commissioning success") || strings.Contains(stdout, "commissioning complete") || 
+		            strings.Contains(stderr, "Commissioning success") || strings.Contains(stderr, "commissioning complete") && stderr == "" { // Added check for empty stderr
+			log.Printf("Commissioning reported success (discriminator %s), but Node ID not directly parsed. Output: %s", payload.Discriminator, commissioningOutput)
 			client.sendPayload("commissioning_status", CommissioningStatusPayload{
-				Success:               true,
-				Details:               "Commissioning reported success, but Node ID parsing needs verification. Output: " + commissioningOutput,
+				Success:               true, // Assume success based on message
+				Details:               "Commissioning reported success. Node ID may need to be queried or was already known. Output: " + commissioningOutput,
 				OriginalDiscriminator: payload.Discriminator,
 				DiscriminatorAssociatedWithRequest: payload.Discriminator,
 			})
@@ -282,7 +299,7 @@ func handleClientMessage(client *Client, msg ClientMessage) { // ClientMessage s
 			log.Printf("Commissioning for discriminator %s may have failed or Node ID not found. Output: %s", payload.Discriminator, commissioningOutput)
 			client.sendPayload("commissioning_status", CommissioningStatusPayload{
 				Success:               false,
-				Error:                 "Commissioning finished, but success or Node ID unclear. Check logs.",
+				Error:                 "Commissioning finished, but success or Node ID unclear from output. Check logs.",
 				Details:               commissioningOutput,
 				OriginalDiscriminator: payload.Discriminator,
 				DiscriminatorAssociatedWithRequest: payload.Discriminator,
@@ -385,7 +402,8 @@ func handleClientMessage(client *Client, msg ClientMessage) { // ClientMessage s
 		log.Printf("Unknown message type from client %v: %s", client.conn.RemoteAddr(), msg.Type)
 		client.notifyClient("error", map[string]interface{}{"message": "Unknown command type received: " + msg.Type})
 	}
-}	
+}
+
 
 // Helper function to extract value after a known key (like "Hostname: ")
 func extractValueAfterKey(line, key string) string {
