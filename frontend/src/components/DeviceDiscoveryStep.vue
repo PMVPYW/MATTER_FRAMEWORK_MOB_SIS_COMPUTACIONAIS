@@ -3,10 +3,10 @@
     <h3>Step 2: Discover & Commission Matter Devices</h3>
     <p>
       Ensure your Matter devices are in pairing/commissioning mode. The backend will use `chip-tool`
-      to scan for BLE-commissionable devices.
+      to scan for commissionable devices.
     </p>
     <button @click="startDiscovery" :disabled="isDiscovering">
-      {{ isDiscovering ? 'Discovering...' : 'Search for New Devices (BLE)' }}
+      {{ isDiscovering ? 'Discovering...' : 'Search for New Devices' }}
     </button>
 
     <div v-if="wizardStore.discoveredDevices.length > 0" class="discovered-devices-list">

@@ -197,6 +197,7 @@ export const useWizardStore = defineStore('wizard', () => {
             ...d,
             id: d.id || `device_${d.discriminator}_${d.vendorId}_${d.productId}`,
           }))
+          console.log('discoveredDevices', discoveredDevices.value)
         } else {
           discoveredDevices.value = []
         }
