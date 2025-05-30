@@ -188,7 +188,7 @@ func handleClientMessage(client *Client, msg ClientMessage) { // ClientMessage s
 		log.Println("Handling discover_devices request (for 'commissionables' devices)")
 		client.notifyClientLog("discovery_log", "Starting 'discover commissionables' via chip-tool...")
 
-		cmd := exec.Command(chipToolPath, "discover", "commissionables")
+		cmd := exec.Command(chipToolPath, "discover", "commissionables", "--discover-once", "false")
 
 		var outBuf, errBuf strings.Builder
 		cmd.Stdout = &outBuf
