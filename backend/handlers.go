@@ -21,7 +21,7 @@ const (
 	// If it's in PATH: "chip-tool"
 	// If installed via snap: "/snap/bin/chip-tool" or "matter-pi-tool.chip-tool"
 	// If built from source: path to your compiled chip-tool executable, e.g., "/home/pi/connectedhomeip/out/chip-tool-arm64/chip-tool"
-	chipToolPath = "chip-tool" // IMPORTANT: Verify this path on your RPi
+	chipToolPath = "/snap/bin/chip-tool" // IMPORTANT: Verify this path on your RPi
 
 	// paaTrustStorePath might be needed for commissioning production devices.
 	// Example: "/path/to/connectedhomeip/credentials/production/paa-root-certs/"
