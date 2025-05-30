@@ -142,7 +142,7 @@ export const useWizardStore = defineStore('wizard', () => {
         payload: {
           discriminator: device.discriminator,
           setupCode: setupCode,
-          nodeIdToAssign: tempNodeIdToAssign,
+          nodeIdToAssign: String(tempNodeIdToAssign),
           vendorId: device.vendorId,
           productId: device.productId,
         },

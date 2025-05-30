@@ -229,15 +229,13 @@ func handleClientMessage(client *Client, msg ClientMessage) { // ClientMessage s
 			return
 		}
 		
+		client.notifyClientLog("commissioning_log", fmt.Sprintf("Attempting to commission Node ID %s with setup code %s (using 'pairing code')", payload.NodeIDToAssign, payload.SetupCode))
+
 		// **** UPDATED Commissioning Command for IP-based devices ****
 		// Using `pairing code` which is suitable for devices already on the IP network.
 		// The payload.NodeIDToAssign is a suggestion from the frontend for the new node.
 		// chip-tool will manage the actual assignment.
-		nodeIdToAssignStr := strconv.FormatInt(payload.NodeIDToAssign, 10) 
-
-		client.notifyClientLog("commissioning_log", fmt.Sprintf("Attempting to commission Node ID %s with setup code %s (using 'pairing code')", nodeIdToAssignStr, payload.SetupCode))
-
-		cmdArgs := []string{"pairing", "code", nodeIdToAssignStr, payload.SetupCode} 
+		cmdArgs := []string{"pairing", "code", payload.NodeIDToAssign, payload.SetupCode}
 		
 		// if paaTrustStorePath != "" { // Add PAA trust store if needed for production devices
 		//    cmdArgs = append(cmdArgs, "--paa-trust-store-path", paaTrustStorePath)

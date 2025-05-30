@@ -36,7 +36,7 @@ type DiscoveredDevice struct {
 type CommissionDevicePayload struct {
 	Discriminator  string `json:"discriminator"`
 	SetupCode      string `json:"setupCode"`
-	NodeIDToAssign int64 `json:"nodeIdToAssign"` // This is the temporary/proposed Node ID from frontend
+	NodeIDToAssign string `json:"nodeIdToAssign"` // This is the temporary/proposed Node ID from frontend
 	VendorID       string `json:"vendorId,omitempty"`
 	ProductID      string `json:"productId,omitempty"`
 }
