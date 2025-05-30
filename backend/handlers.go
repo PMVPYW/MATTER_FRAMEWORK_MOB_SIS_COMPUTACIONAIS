@@ -2,6 +2,7 @@ package main
 
 import (
 	"bufio"
+	"context"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -188,29 +189,48 @@ func handleClientMessage(client *Client, msg ClientMessage) { // ClientMessage s
 		log.Println("Handling discover_devices request (for 'commissionables' devices)")
 		client.notifyClientLog("discovery_log", "Starting 'discover commissionables' via chip-tool...")
 
-		cmd := exec.Command(chipToolPath, "discover", "commissionables", "--discover-once", "false")
+		discoveryTimeout := 60 * time.Second // Adjust as needed
+
+		ctx, cancel := context.WithTimeout(context.Background(), discoveryTimeout)
+		defer cancel() // Ensure context resources are cleaned up
+
+		cmd := exec.CommandContext(ctx, chipToolPath, "discover", "commissionables", "--discover-once", "false")
 
 		var outBuf, errBuf strings.Builder
 		cmd.Stdout = &outBuf
 		cmd.Stderr = &errBuf
 
-		err := cmd.Run()
+		err := cmd.Run() // This will block until the command completes, errors, or the context times out.
+
 		stdout := outBuf.String()
 		stderr := errBuf.String()
 
-		log.Printf("chip-tool 'discover commissionables' stdout:\n%s", stdout)
+		if stdout != "" {
+			log.Printf("chip-tool 'discover commissionables' stdout:\n%s", stdout)
+		} else {
+			log.Println("chip-tool 'discover commissionables' stdout was empty.")
+		}
 		if stderr != "" {
 			log.Printf("chip-tool 'discover commissionables' stderr:\n%s", stderr)
 		}
 
 		if err != nil {
-			errMsg := fmt.Sprintf("Error running chip-tool 'discover commissionables': %v. Stderr: %s", err, stderr)
-			log.Println(errMsg)
-			client.notifyClientLog("discovery_log", "Error during discovery: "+errMsg)
-			client.sendPayload("discovery_result", DiscoveryResultPayload{Devices: []DiscoveredDevice{}, Error: errMsg}) // Assumes DiscoveryResultPayload is in models.go
+			errMsg := ""
+			if ctx.Err() == context.DeadlineExceeded {
+				errMsg = fmt.Sprintf("Discovery command timed out after %s. Stdout: %s, Stderr: %s", discoveryTimeout, stdout, stderr)
+				log.Println(errMsg)
+				client.notifyClientLog("discovery_log", "Discovery timed out: "+errMsg)
+			} else {
+				errMsg = fmt.Sprintf("Error running chip-tool 'discover commissionables': %v. Stdout: %s, Stderr: %s", err, stdout, stderr)
+				log.Println(errMsg)
+				client.notifyClientLog("discovery_log", "Error during discovery: "+errMsg)
+			}
+			client.sendPayload("discovery_result", DiscoveryResultPayload{Devices: []DiscoveredDevice{}, Error: errMsg})
 			return
 		}
 
+		// If err is nil, the command completed successfully (exit status 0) before the timeout.
+		// This is unlikely for "discover --discover-once false" unless chip-tool has internal logic to stop.
 		client.notifyClientLog("discovery_log", "Discovery command 'discover commissionables' finished. Output processing...")
 		discovered := parseDiscoveryOutput(stdout, client)
 		client.sendPayload("discovery_result", DiscoveryResultPayload{Devices: discovered})
