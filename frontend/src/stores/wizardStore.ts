@@ -134,7 +134,8 @@ export const useWizardStore = defineStore('wizard', () => {
       `Enter setup code for ${device.name || device.discriminator} (e.g., MT:XXXXXXXXXXX or numeric):`,
     )
     if (setupCode) {
-      const tempNodeIdToAssign = `temp_${Date.now() % 100000}`
+      //TODO - Fix this
+      const tempNodeIdToAssign = Date.now() % 100000
 
       sendMessage({
         type: 'commission_device',
