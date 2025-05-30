@@ -214,7 +214,7 @@ func handleClientMessage(client *Client, msg ClientMessage) { // ClientMessage s
 			log.Printf("chip-tool 'discover commissionables' stderr:\n%s", stderr)
 		}
 
-		if err != nil {
+
 			errMsg := ""
 			if ctx.Err() == context.DeadlineExceeded {
 				errMsg = fmt.Sprintf("Discovery command timed out after %s. Stdout: %s, Stderr: %s", discoveryTimeout, stdout, stderr)
@@ -226,8 +226,8 @@ func handleClientMessage(client *Client, msg ClientMessage) { // ClientMessage s
 				client.notifyClientLog("discovery_log", "Error during discovery: "+errMsg)
 			}
 			client.sendPayload("discovery_result", DiscoveryResultPayload{Devices: []DiscoveredDevice{}, Error: errMsg})
-			return
-		}
+			
+
 
 		// If err is nil, the command completed successfully (exit status 0) before the timeout.
 		// This is unlikely for "discover --discover-once false" unless chip-tool has internal logic to stop.
