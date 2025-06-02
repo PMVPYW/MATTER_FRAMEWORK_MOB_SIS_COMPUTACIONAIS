@@ -336,7 +336,7 @@ func handleClientMessage(client *Client, msg ClientMessage) { // ClientMessage s
 
 	case "device_command":
 		var payload DeviceCommandPayload // Assumes DeviceCommandPayload is in models.go
-		payloadBytes, _ := json.Marshal(msg.Payload)
+		payloadBytes, err := json.Marshal(msg.Payload)
 		if err := json.Unmarshal(payloadBytes, &payload); err != nil {
 			client.notifyClientLog("command_response", "Invalid payload for device_command: "+err.Error())
 			client.sendPayload("command_response", CommandResponsePayload{Success: false, Error: "Invalid payload: " + err.Error()}) // Assumes CommandResponsePayload is in models.go
