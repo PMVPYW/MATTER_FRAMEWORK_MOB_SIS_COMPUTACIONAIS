@@ -13,6 +13,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"os"
 
 	"github.com/gorilla/websocket"
 )
@@ -257,7 +258,7 @@ func handleClientMessage(client *Client, msg ClientMessage) { // ClientMessage s
 		// The payload.NodeIDToAssign is a suggestion from the frontend for the new node.
 		// chip-tool will manage the actual assignment.
 
-		dir, err := os.Getwd()
+		var dir, err := os.Getwd()
 		if err != nil {
 			fmt.Println("Error getting current working directory:", err)
 			return
