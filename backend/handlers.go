@@ -24,7 +24,7 @@ const (
 	// If installed via snap: "/snap/bin/chip-tool" or "matter-pi-tool.chip-tool"
 	// If built from source: path to your compiled chip-tool executable, e.g., "/home/pi/connectedhomeip/out/chip-tool-arm64/chip-tool"
 	chipToolPath = "/snap/bin/chip-tool" // IMPORTANT: Verify this path on your RPi
-	paaTrustStorePath = dir+"/paa-root-certs"
+	paaTrustStorePath = "/paa-root-certs"
 
 	// paaTrustStorePath might be needed for commissioning production devices.
 	// Example: "/path/to/connectedhomeip/credentials/production/paa-root-certs/"
@@ -263,7 +263,7 @@ func handleClientMessage(client *Client, msg ClientMessage) { // ClientMessage s
 			fmt.Println("Error getting current working directory:", err)
 			return
 		}
-		cmdArgs := []string{"pairing", "code", payload.NodeIDToAssign, payload.SetupCode, "--paa-trust-store-path", dir+"/paa-root-certs"}
+		cmdArgs := []string{"pairing", "code", payload.NodeIDToAssign, payload.SetupCode, "--paa-trust-store-path", dir+paaTrustStorePath}
 		
 		if paaTrustStorePath != "" { // Add PAA trust store if needed for production devices
 		   cmdArgs = append(cmdArgs, "--paa-trust-store-path", paaTrustStorePath)
