@@ -256,7 +256,7 @@ func handleClientMessage(client *Client, msg ClientMessage) { // ClientMessage s
 		// Using `pairing code` which is suitable for devices already on the IP network.
 		// The payload.NodeIDToAssign is a suggestion from the frontend for the new node.
 		// chip-tool will manage the actual assignment.
-		cmdArgs := []string{"pairing", "code", payload.NodeIDToAssign, payload.SetupCode}
+		cmdArgs := []string{"pairing", "code", payload.NodeIDToAssign, payload.SetupCode, "--paa-trust-store-path", "paa-root-certs"}
 		
 		if paaTrustStorePath != "" { // Add PAA trust store if needed for production devices
 		   cmdArgs = append(cmdArgs, "--paa-trust-store-path", paaTrustStorePath)
