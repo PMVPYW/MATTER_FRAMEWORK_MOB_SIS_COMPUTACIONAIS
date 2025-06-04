@@ -379,7 +379,7 @@ func handleClientMessage(client *Client, msg ClientMessage) { // ClientMessage s
 		var outBuf, errBuf strings.Builder // Re-declare for this scope
 		cmd.Stdout = &outBuf
 		cmd.Stderr = &errBuf
-		err = cmd.Run() // Re-declare err
+		err := cmd.Run() // Re-declare err
 		stdout := outBuf.String() // Re-declare
 		stderr := errBuf.String() // Re-declare
 		cmdOutput := fmt.Sprintf("Stdout:\n%s\nStderr:\n%s", stdout, stderr)
@@ -751,8 +751,8 @@ func startAttributeSubscription(client *Client, nodeID, endpointID, clusterName,
 			client.notifyClientLog("subscription_log", fmt.Sprintf("[%s] Error reading subscription stream: %v", attributeName, err))
 		}
 		log.Printf("[%s] Stdout pipe closed.", subscriptionID)
-		err = cmd.Wait()
-		log.Printf("[%s] chip-tool subscribe command finished. Exit error: %v", subscriptionID, err)
-		client.notifyClientLog("subscription_log", fmt.Sprintf("Subscription for %s/%s on Node %s ended. Error: %v", clusterName, attributeName, nodeID, err))
+		waitErr := cmd.Wait()
+		log.Printf("[%s] chip-tool subscribe command finished. Exit error: %v", subscriptionID, waitErr)
+		client.notifyClientLog("subscription_log", fmt.Sprintf("Subscription for %s/%s on Node %s ended. Error: %v", clusterName, attributeName, nodeID, waitErr))
 	}()
 }
