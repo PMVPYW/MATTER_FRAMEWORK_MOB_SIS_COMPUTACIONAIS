@@ -7,13 +7,13 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"os"
 	"os/exec"
 	"regexp"
 	"strconv"
 	"strings"
 	"sync"
 	"time"
-	"os"
 
 	"github.com/gorilla/websocket"
 )
@@ -24,7 +24,7 @@ const (
 	// If installed via snap: "/snap/bin/chip-tool" or "matter-pi-tool.chip-tool"
 	// If built from source: path to your compiled chip-tool executable, e.g., "/home/pi/connectedhomeip/out/chip-tool-arm64/chip-tool"
 	chipToolPath = "/snap/bin/chip-tool" // IMPORTANT: Verify this path on your RPi
-	paaTrustStorePath = "/paa-root-certs"
+	paaTrustStorePath = "/paa-root-certs/dcld_mirror_CN_Basics_PAA_vid_0x137B.der"
 
 	// paaTrustStorePath might be needed for commissioning production devices.
 	// Example: "/path/to/connectedhomeip/credentials/production/paa-root-certs/"
