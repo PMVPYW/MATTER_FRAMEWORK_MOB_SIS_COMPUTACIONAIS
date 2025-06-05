@@ -264,6 +264,7 @@ func handleClientMessage(client *Client, msg ClientMessage) { // ClientMessage s
 			fmt.Println("Error getting current working directory:", err)
 			return
 		}
+<<<<<<< HEAD
 		cmdArgs := []string{"pairing", "onnetwork-long", payload.CommissioningMode, payload.SetupCode, payload.LongDiscriminator}
 		fmt.Println("\nCMDARGS:",  cmdArgs)
 		fmt.Println("\nPAYLOAD:",  payload)
@@ -272,6 +273,9 @@ func handleClientMessage(client *Client, msg ClientMessage) { // ClientMessage s
 		fmt.Println("\nPAYLOAD ProductID:",  payload.ProductID)
 		fmt.Println("\nPAYLOAD SetupCode:",  payload.SetupCode)
 		fmt.Println("\nPAYLOAD VendorID:",  payload.VendorID)
+=======
+		cmdArgs := []string{"pairing", "onnetwork-long", payload.NodeIDToAssign, payload.SetupCode, payload.Discriminator}
+>>>>>>> 79fe39c (Update command arguments in handleClientMessage to include Discriminator for pairing)
 		
 		// if paaTrustStorePath != "" { // Add PAA trust store if needed for production devices
 		//    cmdArgs = append(cmdArgs, "--paa-trust-store-path", paaTrustStorePath)
