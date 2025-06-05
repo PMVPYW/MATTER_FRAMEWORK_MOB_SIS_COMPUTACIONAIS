@@ -258,16 +258,16 @@ func handleClientMessage(client *Client, msg ClientMessage) { // ClientMessage s
 		// The payload.NodeIDToAssign is a suggestion from the frontend for the new node.
 		// chip-tool will manage the actual assignment.
 
-		var dir, err = os.Getwd()
+		var _, err = os.Getwd()
 		if err != nil {
 			fmt.Println("Error getting current working directory:", err)
 			return
 		}
-		cmdArgs := []string{"pairing", "code", payload.NodeIDToAssign, payload.SetupCode, "--paa-trust-store-path", dir+paaTrustStorePath}
+		cmdArgs := []string{"pairing", "onnetwork", payload.NodeIDToAssign, payload.SetupCode}
 		
-		if paaTrustStorePath != "" { // Add PAA trust store if needed for production devices
-		   cmdArgs = append(cmdArgs, "--paa-trust-store-path", paaTrustStorePath)
-		}
+		// if paaTrustStorePath != "" { // Add PAA trust store if needed for production devices
+		//    cmdArgs = append(cmdArgs, "--paa-trust-store-path", paaTrustStorePath)
+		// }
 
 		cmd := exec.Command(chipToolPath, cmdArgs...)
 		client.notifyClientLog("commissioning_log", fmt.Sprintf("Executing: %s %s", chipToolPath, strings.Join(cmdArgs, " ")))
