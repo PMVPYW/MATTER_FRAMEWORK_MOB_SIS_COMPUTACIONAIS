@@ -263,7 +263,7 @@ func handleClientMessage(client *Client, msg ClientMessage) { // ClientMessage s
 			fmt.Println("Error getting current working directory:", err)
 			return
 		}
-		cmdArgs := []string{"pairing", "onnetwork", payload.NodeIDToAssign, payload.SetupCode}
+		cmdArgs := []string{"pairing", "onnetwork-long", payload.NodeIDToAssign, payload.SetupCode, payload.Discriminator}
 		
 		// if paaTrustStorePath != "" { // Add PAA trust store if needed for production devices
 		//    cmdArgs = append(cmdArgs, "--paa-trust-store-path", paaTrustStorePath)
