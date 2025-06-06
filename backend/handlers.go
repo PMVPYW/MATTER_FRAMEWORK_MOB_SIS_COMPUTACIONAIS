@@ -264,7 +264,8 @@ func handleClientMessage(client *Client, msg ClientMessage) { // ClientMessage s
 			return
 		}
 		cmdArgs := []string{"pairing", "onnetwork-long", payload.NodeIDToAssign, payload.SetupCode, payload.Discriminator}
-		fmt.Println("\nCMDARGS:", cmdArgs)
+		fmt.Println("\nCMDARGS:",  cmdArgs)
+		fmt.Println("\nPAYLOAD:",  payload)
 		
 		// if paaTrustStorePath != "" { // Add PAA trust store if needed for production devices
 		//    cmdArgs = append(cmdArgs, "--paa-trust-store-path", paaTrustStorePath)
