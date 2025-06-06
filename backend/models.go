@@ -50,7 +50,7 @@ type CommissionDevicePayload struct {
     PairingHint                     string    `json:"pairingHint"`
     InstanceName                    string `json:"instanceName"`
     CommissioningMode               string    `json:"commissioningMode"`
-    SupportsCommissionerGeneratedPasscode bool `json:"supportsCommissionerGeneratedPasscode"`
+    SupportsCommissionerGeneratedPasscode string `json:"supportsCommissionerGeneratedPasscode"`
 }
 
 // DeviceCommandPayload is the expected structure for "device_command" message from client

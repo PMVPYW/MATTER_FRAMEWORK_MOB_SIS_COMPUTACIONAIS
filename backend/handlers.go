@@ -226,8 +226,10 @@ func handleClientMessage(client *Client, msg ClientMessage) { // ClientMessage s
 				log.Println(errMsg)
 				client.notifyClientLog("discovery_log", "Error during discovery: "+errMsg)
 			}
-			client.sendPayload("discovery_result", DiscoveryResultPayload{Devices: []DiscoveredDevice{}, Error: errMsg})
+			fmt.Println("ConaAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAa", DiscoveryResultPayload{Devices: []DiscoveredDevice{}, Error: errMsg})
 			
+			client.sendPayload("discovery_result", DiscoveryResultPayload{Devices: []DiscoveredDevice{}, Error: errMsg})
+			return
 
 
 		// If err is nil, the command completed successfully (exit status 0) before the timeout.
@@ -344,6 +346,7 @@ func handleClientMessage(client *Client, msg ClientMessage) { // ClientMessage s
 	case "device_command":
 		var payload DeviceCommandPayload // Assumes DeviceCommandPayload is in models.go
 		payloadBytes, _ := json.Marshal(msg.Payload)
+		fmt.Println("msg Payload" , msg.Payload)
 		if err := json.Unmarshal(payloadBytes, &payload); err != nil {
 			client.notifyClientLog("command_response", "Invalid payload for device_command: "+err.Error())
 			client.sendPayload("command_response", CommandResponsePayload{Success: false, Error: "Invalid payload: " + err.Error()}) // Assumes CommandResponsePayload is in models.go
