@@ -499,52 +499,120 @@ func parseDiscoveryOutput(output string, client *Client) []DiscoveredDevice { //
 			continue 
 		}
 
-		if currentDevice != nil { 
-			var val string
-			// Pass keys exactly as they appear in the output, e.g., "Hostname:", "Vendor ID:"
-			// The extractValueAfterKey function will take care of trimming the space after the colon if present.
-			if val = extractValueAfterKey(contentAfterDis, "Hostname:"); val != "" {
-				currentDevice.Name = val 
-				if client != nil { client.notifyClientLog("discovery_log", fmt.Sprintf("Parsed Hostname (as Name): %s", currentDevice.Name)) }
-			} else if val = extractValueAfterKey(contentAfterDis, "IP Address #1:"); val != "" { // Example, assuming we only care about the first IP
-				// currentDevice.IPAddress = val // Add to struct if needed
-				if client != nil { client.notifyClientLog("discovery_log", fmt.Sprintf("Parsed IP Address: %s", val)) }
-			} else if val = extractValueAfterKey(contentAfterDis, "Port:"); val != "" {
-				// currentDevice.Port = val // Add to struct if needed
-				if client != nil { client.notifyClientLog("discovery_log", fmt.Sprintf("Parsed Port: %s", val)) }
-			} else if val = extractValueAfterKey(contentAfterDis, "Vendor ID:"); val != "" {
-				currentDevice.VendorID = val
-				if client != nil { client.notifyClientLog("discovery_log", fmt.Sprintf("Parsed Vendor ID: %s", currentDevice.VendorID)) }
-			} else if val = extractValueAfterKey(contentAfterDis, "Product ID:"); val != "" {
-				currentDevice.ProductID = val
-				if client != nil { client.notifyClientLog("discovery_log", fmt.Sprintf("Parsed Product ID: %s", currentDevice.ProductID)) }
-			} else if val = extractValueAfterKey(contentAfterDis, "Long Discriminator:"); val != "" {
-				currentDevice.Discriminator = val
-				if client != nil { client.notifyClientLog("discovery_log", fmt.Sprintf("Parsed Long Discriminator: %s", currentDevice.Discriminator)) }
-			} else if val = extractValueAfterKey(contentAfterDis, "Pairing Hint:"); val != "" {
-				if ph, err := strconv.ParseUint(val, 10, 16); err == nil {
-					currentDevice.PairingHint = uint16(ph)
-					if client != nil { client.notifyClientLog("discovery_log", fmt.Sprintf("Parsed Pairing Hint: %d", currentDevice.PairingHint)) }
-				} else {
-					if client != nil { client.notifyClientLog("discovery_log", fmt.Sprintf("Error parsing Pairing Hint '%s': %v", val, err)) }
-				}
-			} else if val = extractValueAfterKey(contentAfterDis, "Instance Name:"); val != "" {
-				currentDevice.InstanceName = val
-				if client != nil { client.notifyClientLog("discovery_log", fmt.Sprintf("Parsed Instance Name: %s", currentDevice.InstanceName)) }
-			} else if val = extractValueAfterKey(contentAfterDis, "Commissioning Mode:"); val != "" {
-				if cm, err := strconv.ParseUint(val, 10, 8); err == nil {
-					currentDevice.CommissioningMode = uint8(cm)
-					switch currentDevice.CommissioningMode {
-					case 1: currentDevice.Type = "BLE"
-					case 2: currentDevice.Type = "OnNetwork (DNS-SD)"
-					default: currentDevice.Type = fmt.Sprintf("CM:%d", currentDevice.CommissioningMode)
-					}
-					if client != nil { client.notifyClientLog("discovery_log", fmt.Sprintf("Parsed Commissioning Mode: %d (Type: %s)", currentDevice.CommissioningMode, currentDevice.Type)) }
-				} else {
-					if client != nil { client.notifyClientLog("discovery_log", fmt.Sprintf("Error parsing Commissioning Mode '%s': %v", val, err)) }
-				}
-			}
-		}
+		if currentDevice != nil {
+    var val string
+
+    if val = extractValueAfterKey(contentAfterDis, "Hostname:"); val != "" {
+        currentDevice.Name = val // Assign Hostname to Name as per your existing logic
+        if client != nil {
+            client.notifyClientLog("discovery_log", fmt.Sprintf("Parsed Hostname (as Name): %s", currentDevice.Name))
+        }
+    } else if val = extractValueAfterKey(contentAfterDis, "IP Address #1:"); val != "" {
+        currentDevice.IPAddress = val // Assign to the new IPAddress field
+        if client != nil {
+            client.notifyClientLog("discovery_log", fmt.Sprintf("Parsed IP Address: %s", currentDevice.IPAddress))
+        }
+    } else if val = extractValueAfterKey(contentAfterDis, "Port:"); val != "" {
+        if port, err := strconv.Atoi(val); err == nil {
+            currentDevice.Port = port // Assign to the new Port field
+            if client != nil {
+                client.notifyClientLog("discovery_log", fmt.Sprintf("Parsed Port: %d", currentDevice.Port))
+            }
+        } else {
+            if client != nil {
+                client.notifyClientLog("discovery_log", fmt.Sprintf("Error parsing Port '%s': %v", val, err))
+            }
+        }
+    } else if val = extractValueAfterKey(contentAfterDis, "Mrp Interval idle:"); val != "" {
+        currentDevice.MrpIntervalIdle = val
+        if client != nil {
+            client.notifyClientLog("discovery_log", fmt.Sprintf("Parsed Mrp Interval idle: %s", currentDevice.MrpIntervalIdle))
+        }
+    } else if val = extractValueAfterKey(contentAfterDis, "Mrp Interval active:"); val != "" {
+        currentDevice.MrpIntervalActive = val
+        if client != nil {
+            client.notifyClientLog("discovery_log", fmt.Sprintf("Parsed Mrp Interval active: %s", currentDevice.MrpIntervalActive))
+        }
+    } else if val = extractValueAfterKey(contentAfterDis, "Mrp Active Threshold:"); val != "" {
+        currentDevice.MrpActiveThreshold = val
+        if client != nil {
+            client.notifyClientLog("discovery_log", fmt.Sprintf("Parsed Mrp Active Threshold: %s", currentDevice.MrpActiveThreshold))
+        }
+    } else if val = extractValueAfterKey(contentAfterDis, "TCP Client Supported:"); val != "" {
+        // Assuming 0 or 1. Convert to bool.
+        currentDevice.TCPClientSupported = (val == "1")
+        if client != nil {
+            client.notifyClientLog("discovery_log", fmt.Sprintf("Parsed TCP Client Supported: %t", currentDevice.TCPClientSupported))
+        }
+    } else if val = extractValueAfterKey(contentAfterDis, "TCP Server Supported:"); val != "" {
+        // Assuming 0 or 1. Convert to bool.
+        currentDevice.TCPServerSupported = (val == "1")
+        if client != nil {
+            client.notifyClientLog("discovery_log", fmt.Sprintf("Parsed TCP Server Supported: %t", currentDevice.TCPServerSupported))
+        }
+    } else if val = extractValueAfterKey(contentAfterDis, "ICD:"); val != "" {
+        currentDevice.ICD = val
+        if client != nil {
+            client.notifyClientLog("discovery_log", fmt.Sprintf("Parsed ICD: %s", currentDevice.ICD))
+        }
+    } else if val = extractValueAfterKey(contentAfterDis, "Vendor ID:"); val != "" {
+        currentDevice.VendorID = val // Still a string as per updated struct
+        if client != nil {
+            client.notifyClientLog("discovery_log", fmt.Sprintf("Parsed Vendor ID: %s", currentDevice.VendorID))
+        }
+    } else if val = extractValueAfterKey(contentAfterDis, "Product ID:"); val != "" {
+        currentDevice.ProductID = val // Still a string as per updated struct
+        if client != nil {
+            client.notifyClientLog("discovery_log", fmt.Sprintf("Parsed Product ID: %s", currentDevice.ProductID))
+        }
+    } else if val = extractValueAfterKey(contentAfterDis, "Long Discriminator:"); val != "" {
+        currentDevice.Discriminator = val // Still a string as per updated struct
+        if client != nil {
+            client.notifyClientLog("discovery_log", fmt.Sprintf("Parsed Long Discriminator: %s", currentDevice.Discriminator))
+        }
+    } else if val = extractValueAfterKey(contentAfterDis, "Pairing Hint:"); val != "" {
+        if ph, err := strconv.ParseUint(val, 10, 16); err == nil {
+            currentDevice.PairingHint = uint16(ph)
+            if client != nil {
+                client.notifyClientLog("discovery_log", fmt.Sprintf("Parsed Pairing Hint: %d", currentDevice.PairingHint))
+            }
+        } else {
+            if client != nil {
+                client.notifyClientLog("discovery_log", fmt.Sprintf("Error parsing Pairing Hint '%s': %v", val, err))
+            }
+        }
+    } else if val = extractValueAfterKey(contentAfterDis, "Instance Name:"); val != "" {
+        currentDevice.InstanceName = val
+        if client != nil {
+            client.notifyClientLog("discovery_log", fmt.Sprintf("Parsed Instance Name: %s", currentDevice.InstanceName))
+        }
+    } else if val = extractValueAfterKey(contentAfterDis, "Commissioning Mode:"); val != "" {
+        if cm, err := strconv.ParseUint(val, 10, 8); err == nil {
+            currentDevice.CommissioningMode = uint8(cm)
+            switch currentDevice.CommissioningMode {
+            case 1:
+                currentDevice.Type = "BLE"
+            case 2:
+                currentDevice.Type = "OnNetwork (DNS-SD)"
+            default:
+                currentDevice.Type = fmt.Sprintf("CM:%d", currentDevice.CommissioningMode)
+            }
+            if client != nil {
+                client.notifyClientLog("discovery_log", fmt.Sprintf("Parsed Commissioning Mode: %d (Type: %s)", currentDevice.CommissioningMode, currentDevice.Type))
+            }
+        } else {
+            if client != nil {
+                client.notifyClientLog("discovery_log", fmt.Sprintf("Error parsing Commissioning Mode '%s': %v", val, err))
+            }
+        }
+    } else if val = extractValueAfterKey(contentAfterDis, "Supports Commissioner Generated Passcode:"); val != "" {
+        // Convert "true" or "false" string to boolean
+        currentDevice.SupportsCommissionerGeneratedPasscode = (val == "true")
+        if client != nil {
+            client.notifyClientLog("discovery_log", fmt.Sprintf("Parsed Supports Commissioner Generated Passcode: %t", currentDevice.SupportsCommissionerGeneratedPasscode))
+        }
+    }
+}
 	}
 
 	if currentDevice != nil && (currentDevice.Discriminator != "" || currentDevice.InstanceName != "") {
