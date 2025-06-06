@@ -229,7 +229,6 @@ func handleClientMessage(client *Client, msg ClientMessage) { // ClientMessage s
 			fmt.Println("ConaAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAa", DiscoveryResultPayload{Devices: []DiscoveredDevice{}, Error: errMsg})
 			
 			client.sendPayload("discovery_result", DiscoveryResultPayload{Devices: []DiscoveredDevice{}, Error: errMsg})
-			return
 
 
 		// If err is nil, the command completed successfully (exit status 0) before the timeout.
