@@ -245,13 +245,13 @@ func handleClientMessage(client *Client, msg ClientMessage) { // ClientMessage s
 			return
 		}
 		log.Printf("Handling commission_device request: %+v", payload)
-		if payload.SetupCode == "" || payload.NodeIDToAssign == "" { // Discriminator might not be strictly needed for 'pairing code' if device is uniquely identified by IP context
+		if payload.SetupCode == "" || payload.CommissioningMode == "" { // Discriminator might not be strictly needed for 'pairing code' if device is uniquely identified by IP context
 			client.notifyClientLog("commissioning_log", "Missing setupCode or nodeIdToAssign for commissioning.")
-			client.sendPayload("commissioning_status", CommissioningStatusPayload{Success: false, Error: "Missing setupCode or nodeIdToAssign.", OriginalDiscriminator: payload.Discriminator})
+			client.sendPayload("commissioning_status", CommissioningStatusPayload{Success: false, Error: "Missing setupCode or nodeIdToAssign.", OriginalDiscriminator: payload.LongDiscriminator})
 			return
 		}
 		
-		client.notifyClientLog("commissioning_log", fmt.Sprintf("Attempting to commission Node ID %s with setup code %s (using 'pairing code')", payload.NodeIDToAssign, payload.SetupCode))
+		client.notifyClientLog("commissioning_log", fmt.Sprintf("Attempting to commission Node ID %s with setup code %s (using 'pairing code')", payload.CommissioningMode, payload.SetupCode))
 
 		// **** UPDATED Commissioning Command for IP-based devices ****
 		// Using `pairing code` which is suitable for devices already on the IP network.
@@ -263,11 +263,11 @@ func handleClientMessage(client *Client, msg ClientMessage) { // ClientMessage s
 			fmt.Println("Error getting current working directory:", err)
 			return
 		}
-		cmdArgs := []string{"pairing", "onnetwork-long", payload.NodeIDToAssign, payload.SetupCode, payload.Discriminator}
+		cmdArgs := []string{"pairing", "onnetwork-long", payload.CommissioningMode, payload.SetupCode, payload.LongDiscriminator}
 		fmt.Println("\nCMDARGS:",  cmdArgs)
 		fmt.Println("\nPAYLOAD:",  payload)
-		fmt.Println("\nPAYLOAD NODE ID TO ASSIGN:",  payload.NodeIDToAssign)
-		fmt.Println("\nPAYLOAD Discriminator:",  payload.Discriminator)
+		fmt.Println("\nPAYLOAD NODE ID TO ASSIGN:",  payload.CommissioningMode)
+		fmt.Println("\nPAYLOAD Discriminator:",  payload.LongDiscriminator)
 		fmt.Println("\nPAYLOAD ProductID:",  payload.ProductID)
 		fmt.Println("\nPAYLOAD SetupCode:",  payload.SetupCode)
 		fmt.Println("\nPAYLOAD VendorID:",  payload.VendorID)
@@ -296,8 +296,8 @@ func handleClientMessage(client *Client, msg ClientMessage) { // ClientMessage s
 				Success:               false,
 				Error:                 errMsg,
 				Details:               commissioningOutput,
-				OriginalDiscriminator: payload.Discriminator, // Still useful to send back for frontend context
-				DiscriminatorAssociatedWithRequest: payload.Discriminator,
+				OriginalDiscriminator: payload.LongDiscriminator, // Still useful to send back for frontend context
+				DiscriminatorAssociatedWithRequest: payload.LongDiscriminator,
 			})
 			return
 		}
@@ -317,27 +317,27 @@ func handleClientMessage(client *Client, msg ClientMessage) { // ClientMessage s
 				Success:               true,
 				NodeID:                actualNodeID,
 				Details:               "Device commissioned successfully. " + commissioningOutput,
-				OriginalDiscriminator: payload.Discriminator,
-				DiscriminatorAssociatedWithRequest: payload.Discriminator,
+				OriginalDiscriminator: payload.LongDiscriminator,
+				DiscriminatorAssociatedWithRequest: payload.LongDiscriminator,
 			})
 			go readAttribute(client, actualNodeID, "1", "BasicInformation", "NodeLabel")
 		} else if strings.Contains(stdout, "Commissioning success") || strings.Contains(stdout, "commissioning complete") || 
 		            strings.Contains(stderr, "Commissioning success") || strings.Contains(stderr, "commissioning complete") && stderr == "" { // Added check for empty stderr
-			log.Printf("Commissioning reported success (discriminator %s), but Node ID not directly parsed. Output: %s", payload.Discriminator, commissioningOutput)
+			log.Printf("Commissioning reported success (discriminator %s), but Node ID not directly parsed. Output: %s", payload.LongDiscriminator, commissioningOutput)
 			client.sendPayload("commissioning_status", CommissioningStatusPayload{
 				Success:               true, // Assume success based on message
 				Details:               "Commissioning reported success. Node ID may need to be queried or was already known. Output: " + commissioningOutput,
-				OriginalDiscriminator: payload.Discriminator,
-				DiscriminatorAssociatedWithRequest: payload.Discriminator,
+				OriginalDiscriminator: payload.LongDiscriminator,
+				DiscriminatorAssociatedWithRequest: payload.LongDiscriminator,
 			})
 		} else {
-			log.Printf("Commissioning for discriminator %s may have failed or Node ID not found. Output: %s", payload.Discriminator, commissioningOutput)
+			log.Printf("Commissioning for discriminator %s may have failed or Node ID not found. Output: %s", payload.LongDiscriminator, commissioningOutput)
 			client.sendPayload("commissioning_status", CommissioningStatusPayload{
 				Success:               false,
 				Error:                 "Commissioning finished, but success or Node ID unclear from output. Check logs.",
 				Details:               commissioningOutput,
-				OriginalDiscriminator: payload.Discriminator,
-				DiscriminatorAssociatedWithRequest: payload.Discriminator,
+				OriginalDiscriminator: payload.LongDiscriminator,
+				DiscriminatorAssociatedWithRequest: payload.LongDiscriminator,
 			})
 		}
 
