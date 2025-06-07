@@ -1,7 +1,6 @@
 <template>
   <div class="step-container device-control-step">
     <h3>Step 3: Control Matter Devices</h3>
-
     <div v-if="commissionedDevices.length === 0">
       <p>
         No devices have been successfully commissioned yet, or no commissioned devices are
@@ -97,6 +96,7 @@ watch(
   (newDevice) => {
     if (newDevice && newDevice.nodeId) {
       const currentBrightness = getDeviceStatus('LevelControl_CurrentLevel')
+      console.log('currentBrightness', currentBrightness)
       if (currentBrightness !== 'Unknown' && currentBrightness !== undefined) {
         brightnessLevel.value = parseInt(String(currentBrightness), 10)
       } else {

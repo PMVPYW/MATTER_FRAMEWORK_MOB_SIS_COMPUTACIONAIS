@@ -85,6 +85,7 @@ export const useWizardStore = defineStore('wizard', () => {
   const discoveredDevices: Ref<DiscoveredDevice[]> = ref([])
   const selectedDevice: Ref<DiscoveredDevice | null> = ref(null)
   const commissioningLogs: Ref<string[]> = ref([])
+  const comunicationLogs: Ref<string[]> = ref([])
   const deviceStatus: Ref<DeviceNodeStatus> = ref({})
 
   // --- Getters ---
@@ -134,7 +135,6 @@ export const useWizardStore = defineStore('wizard', () => {
       `Enter setup code for ${device.name || device.discriminator} (e.g., MT:XXXXXXXXXXX or numeric):`,
     )
     if (setupCode) {
-      //TODO - Fix this
       const tempNodeIdToAssign = Date.now() % 100000
 
       sendMessage({
@@ -210,41 +210,43 @@ export const useWizardStore = defineStore('wizard', () => {
         commissioningLogs.value.push(`[Commissioning Log]: ${message.payload as string}`)
         break
       case 'commissioning_status':
-        const statusPayload = message.payload as CommissioningStatusPayload
+        var statusPayload2 = message.payload as CommissioningStatusPayload
         commissioningLogs.value.push(
-          `[Commissioning Status]: Success: ${statusPayload.success}, Node ID: ${statusPayload.nodeId}, Details: ${statusPayload.details || statusPayload.error || ''}`,
+          `[Commissioning Status]: Success: ${statusPayload2.success}, Node ID: ${statusPayload2.nodeId}, Details: ${statusPayload2.details || statusPayload2.error || ''}`,
         )
-        if (statusPayload.success && statusPayload.nodeId) {
+        console.log('CommissioningLogs', commissioningLogs.value)
+        if (statusPayload2.success && statusPayload2.nodeId) {
+          console.log('It Was a sucesss')
           const deviceToUpdate = discoveredDevices.value.find(
             (d) =>
-              d.discriminator === statusPayload.originalDiscriminator ||
-              d.discriminator === statusPayload.discriminatorAssociatedWithRequest,
+              d.discriminator === statusPayload2.originalDiscriminator ||
+              d.discriminator === statusPayload2.discriminatorAssociatedWithRequest,
           )
-
+          console.log('DeviceToUpdate', deviceToUpdate)
           if (deviceToUpdate) {
-            deviceToUpdate.nodeId = statusPayload.nodeId
+            deviceToUpdate.nodeId = statusPayload2.nodeId
             if (
               selectedDevice.value &&
               selectedDevice.value.discriminator === deviceToUpdate.discriminator
             ) {
-              selectedDevice.value.nodeId = statusPayload.nodeId
+              selectedDevice.value.nodeId = statusPayload2.nodeId
             }
           } else {
             const newDevice: DiscoveredDevice = {
-              id: `device_node_${statusPayload.nodeId}`,
-              name: `Device ${statusPayload.nodeId}`, // Default name
-              nodeId: statusPayload.nodeId,
+              id: `device_node_${statusPayload2.nodeId}`,
+              name: `Device ${statusPayload2.nodeId}`, // Default name
+              nodeId: statusPayload2.nodeId,
               discriminator:
-                statusPayload.originalDiscriminator ||
-                statusPayload.discriminatorAssociatedWithRequest ||
+                statusPayload2.originalDiscriminator ||
+                statusPayload2.discriminatorAssociatedWithRequest ||
                 'N/A',
             }
-            if (!discoveredDevices.value.find((d) => d.nodeId === statusPayload.nodeId)) {
+            if (!discoveredDevices.value.find((d) => d.nodeId === statusPayload2.nodeId)) {
               discoveredDevices.value.push(newDevice)
             }
           }
           const newlyCommissioned = discoveredDevices.value.find(
-            (d) => d.nodeId === statusPayload.nodeId,
+            (d) => d.nodeId === statusPayload2.nodeId,
           )
           if (newlyCommissioned) {
             selectedDevice.value = newlyCommissioned

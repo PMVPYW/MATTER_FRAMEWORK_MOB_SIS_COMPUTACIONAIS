@@ -41,22 +41,22 @@ type DiscoveredDevice struct {
 
 // CommissionDevicePayload is the expected structure for "commission_device" message from client
 type CommissionDevicePayload struct {
-	SetupCode      string `json:"setupCode"`
-    Hostname                        string `json:"hostname"`
-    IPAddress                       string `json:"ipAddress"`
-    Port                            string    `json:"port"`
-    MrpIntervalIdle                 string `json:"mrpIntervalIdle,omitempty"`    // Using string as "not present" is a value
-    MrpIntervalActive               string `json:"mrpIntervalActive,omitempty"`  // Using string as "not present" is a value
-    MrpActiveThreshold              string `json:"mrpActiveThreshold,omitempty"` // Using string as "not present" is a value
-    TCPClientSupported              string    `json:"tcpClientSupported"`
-    TCPServerSupported              string    `json:"tcpServerSupported"`
-    ICD                             string `json:"icd,omitempty"`              // Using string as "not present" is a value
-    VendorID                        string    `json:"vendorId"`
-    ProductID                       string    `json:"productId"`
-    LongDiscriminator               string    `json:"longDiscriminator"`
-    PairingHint                     string    `json:"pairingHint"`
-    InstanceName                    string `json:"instanceName"`
-    CommissioningMode               string    `json:"commissioningMode"`
+	SetupCode                             string `json:"setupCode"`
+    Hostname                              string `json:"hostname"`
+    IPAddress                             string `json:"ipAddress"`
+    Port                                  string `json:"port"` 
+    MrpIntervalIdle                       string `json:"mrpIntervalIdle,omitempty"`    // Using string as "not present" is a value
+    MrpIntervalActive                     string `json:"mrpIntervalActive,omitempty"`  // Using string as "not present" is a value
+    MrpActiveThreshold                    string `json:"mrpActiveThreshold,omitempty"` // Using string as "not present" is a value
+    TCPClientSupported                    string `json:"tcpClientSupported"`
+    TCPServerSupported                    string `json:"tcpServerSupported"`
+    ICD                                   string `json:"icd,omitempty"`              // Using string as "not present" is a value
+    VendorID                              string `json:"vendorId"`
+    ProductID                             string `json:"productId"`
+    LongDiscriminator                     string `json:"longDiscriminator"`
+    PairingHint                           string `json:"pairingHint"`
+    InstanceName                          string `json:"instanceName"`
+    CommissioningMode                     string `json:"commissioningMode"`
     SupportsCommissionerGeneratedPasscode string `json:"supportsCommissionerGeneratedPasscode"`
 }
 
