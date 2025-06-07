@@ -247,7 +247,7 @@ func handleClientMessage(client *Client, msg ClientMessage) { // ClientMessage s
 			return
 		}
 		log.Printf("Handling commission_device request: %+v", payload)
-		if payload.SetupCode == "" || payload.CommissioningMode == "" { // Discriminator might not be strictly needed for 'pairing code' if device is uniquely identified by IP context
+		if payload.SetupCode == "" { // Discriminator might not be strictly needed for 'pairing code' if device is uniquely identified by IP context
 			client.notifyClientLog("commissioning_log", "Missing setupCode or nodeIdToAssign for commissioning.")
 			client.sendPayload("commissioning_status", CommissioningStatusPayload{Success: false, Error: "Missing setupCode or nodeIdToAssign.", OriginalDiscriminator: payload.LongDiscriminator})
 			return
