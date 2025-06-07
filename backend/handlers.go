@@ -202,12 +202,12 @@ func handleClientMessage(client *Client, msg ClientMessage) { // ClientMessage s
 
 		log.Println("Getting device status using chip-tool")
 		cmd := exec.Command(chipToolPath, "onoff", "read", "on-off", statusPayload.deviceNodeId, statusPayload.deviceEndpointId)
-		var outBuf, errBuf strings.Builder 
-		cmd.Stdout = &outBuf
-		cmd.Stderr = &errBuf
+		var outBuf_status, errBuf_status strings.Builder 
+		cmd.Stdout = &outBuf_status
+		cmd.Stderr = &errBuf_status
 		err := cmd.Run()            
-		stdout := outBuf.String()   
-		stderr := errBuf.String()  
+		stdout := outBuf_status.String()   
+		stderr := errBuf_status.String()  
 
 		re := regexp.MustCompile(`Data = (true|false)`)
 		match := re.FindStringSubmatch(stdout)
@@ -336,7 +336,6 @@ func handleClientMessage(client *Client, msg ClientMessage) { // ClientMessage s
 		
 		cmd = exec.Command(chipToolPath, cmdArgs...)
 
-		var outBuf, errBuf strings.Builder 
 		cmd.Stdout = &outBuf
 		cmd.Stderr = &errBuf
 		err = cmd.Run()            
