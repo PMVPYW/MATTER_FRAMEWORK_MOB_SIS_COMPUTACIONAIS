@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"math/rand"
 	"net/http"
 	"os"
 	"os/exec"
@@ -264,7 +265,8 @@ func handleClientMessage(client *Client, msg ClientMessage) { // ClientMessage s
 			fmt.Println("Error getting current working directory:", err)
 			return
 		}
-		cmdArgs := []string{"pairing", "onnetwork-long", payload.CommissioningMode, payload.SetupCode, payload.LongDiscriminator}
+		payload.NodeID = strconv.Itoa(rand.Int())
+		cmdArgs := []string{"pairing", "onnetwork-long", payload.NodeID, payload.SetupCode, payload.LongDiscriminator}
 		fmt.Println("\nCMDARGS:",  cmdArgs)
 		fmt.Println("\nPAYLOAD:",  payload)
 		fmt.Println("\nPAYLOAD NODE ID TO ASSIGN:",  payload.CommissioningMode)

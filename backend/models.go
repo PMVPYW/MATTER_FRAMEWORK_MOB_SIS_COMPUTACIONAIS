@@ -57,6 +57,7 @@ type CommissionDevicePayload struct {
     PairingHint                           string `json:"pairingHint"`
     InstanceName                          string `json:"instanceName"`
     CommissioningMode                     string `json:"commissioningMode"`
+    NodeID                                string `json:string`
     SupportsCommissionerGeneratedPasscode string `json:"supportsCommissionerGeneratedPasscode"`
 }
 
