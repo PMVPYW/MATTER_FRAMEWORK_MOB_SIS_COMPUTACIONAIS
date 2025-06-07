@@ -57,8 +57,9 @@ type CommissionDevicePayload struct {
     PairingHint                           string `json:"pairingHint"`
     InstanceName                          string `json:"instanceName"`
     CommissioningMode                     string `json:"commissioningMode"`
-    NodeID                                string `json:string`
+    NodeID                                string `json:"nodeid"`
     SupportsCommissionerGeneratedPasscode string `json:"supportsCommissionerGeneratedPasscode"`
+    EndpointId                            string `json:"endpointId"`
 }
 
 // DeviceCommandPayload is the expected structure for "device_command" message from client
@@ -76,6 +77,7 @@ type CommissioningStatusPayload struct {
 	Details                        string `json:"details,omitempty"`
 	Error                          string `json:"error,omitempty"`
 	OriginalDiscriminator          string `json:"originalDiscriminator,omitempty"` // Helps frontend map back
+    EndpointId                     string `json:"endpointId"`
 	DiscriminatorAssociatedWithRequest string `json:"discriminatorAssociatedWithRequest,omitempty"` // From client request
 }
 

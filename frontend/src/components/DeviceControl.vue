@@ -83,6 +83,7 @@ const commissionedDevices: ComputedRef<DiscoveredDevice[]> = computed(() => {
 })
 
 function getDeviceStatus(attributeKey: string, defaultValue: any = 'N/A'): any {
+  console.log('wizardStore', wizardStore)
   if (wizardStore.selectedDevice && wizardStore.selectedDevice.nodeId) {
     const nodeIdStr = String(wizardStore.selectedDevice.nodeId)
     const status = wizardStore.deviceStatus[nodeIdStr]

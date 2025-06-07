@@ -18,6 +18,7 @@ export interface DiscoveredDevice {
   vendorId?: string // Vendor ID
   productId?: string // Product ID
   nodeId?: number | string // Assigned Matter Node ID after commissioning
+  status?: string
   // Add any other relevant fields from chip-tool discovery output
 }
 
@@ -58,14 +59,20 @@ export interface DiscoveryResultPayload {
   error?: string
 }
 
+export interface deviceStatusPayload {
+  nodeId: string
+  status: string
+}
+
 export interface CommissioningStatusPayload {
   success: boolean
-  nodeId?: number | string
+  nodeId: string
   details?: string
   error?: string
   discriminatorAssociatedWithRequest?: string // To map back to the discovered device
+  EndpointID?: string
   // Include other fields backend might send like the original discriminator
-  originalDiscriminator?: string
+  originalDiscriminator: string
 }
 
 export interface AttributeUpdatePayload {

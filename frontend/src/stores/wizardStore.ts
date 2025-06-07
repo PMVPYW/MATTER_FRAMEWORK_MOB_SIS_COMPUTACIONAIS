@@ -11,6 +11,7 @@ import type {
   CommissioningStatusPayload,
   AttributeUpdatePayload,
   CommandResponsePayload,
+  deviceStatusPayload,
 } from '@/types'
 
 // Define the state structure (already defined in previous version, ensure it's consistent)
@@ -85,6 +86,7 @@ export const useWizardStore = defineStore('wizard', () => {
   const discoveredDevices: Ref<DiscoveredDevice[]> = ref([])
   const selectedDevice: Ref<DiscoveredDevice | null> = ref(null)
   const commissioningLogs: Ref<string[]> = ref([])
+  const valueLogs: Ref<string[]> = ref([])
   const comunicationLogs: Ref<string[]> = ref([])
   const deviceStatus: Ref<DeviceNodeStatus> = ref({})
 
@@ -124,6 +126,22 @@ export const useWizardStore = defineStore('wizard', () => {
     discoveredDevices.value = []
     commissioningLogs.value.push('Attempting to start device discovery via backend...')
     sendMessage({ type: 'discover_devices' })
+  }
+
+  function getDeviceStatus(deviceNodeId: string, deviceEndpointId: string): void {
+    valueLogs.value.push(
+      'Attempting to get status from device with nodeid: ' +
+        deviceNodeId +
+        ' and EndpointId ' +
+        deviceEndpointId,
+    )
+    sendMessage({
+      type: 'get_status',
+      payload: {
+        deviceNodeId: deviceNodeId,
+        deviceEndpointId: deviceEndpointId,
+      },
+    })
   }
 
   function commissionDevice(device: DiscoveredDevice): void {
@@ -191,6 +209,18 @@ export const useWizardStore = defineStore('wizard', () => {
       case 'discovery_log':
         commissioningLogs.value.push(`[Discovery Log]: ${message.payload as string}`)
         break
+      case 'get_status':
+        const deviceStatusPayload = message.payload as deviceStatusPayload
+        if (deviceStatusPayload) {
+          const currentDeviceIndex = discoveredDevices.value.findIndex(
+            (device) => String(device.nodeId) === deviceStatusPayload.nodeId,
+          )
+          if (currentDeviceIndex < 0) return
+          discoveredDevices.value[currentDeviceIndex].status = deviceStatusPayload.status
+        } else {
+          console.log('oh nooo... la polizia....')
+        }
+        break
       case 'discovery_result':
         const discoveryPayload = message.payload as DiscoveryResultPayload
         if (discoveryPayload && Array.isArray(discoveryPayload.devices)) {
@@ -218,7 +248,7 @@ export const useWizardStore = defineStore('wizard', () => {
           `[Commissioning Status]: Success: ${statusPayload.success}, Node ID: ${statusPayload.nodeId}, Details: ${statusPayload.details || statusPayload.error || ''}`,
         )
         console.log('CommissioningLogs', commissioningLogs.value)
-        localStorage.setItem(statusPayload.nodeId?.toString(), statusPayload.originalDiscriminator)
+        localStorage.setItem(statusPayload.nodeId, statusPayload.originalDiscriminator)
         if (statusPayload.success && statusPayload.nodeId) {
           console.log('It Was a sucesss')
           const deviceToUpdate = discoveredDevices.value.find(

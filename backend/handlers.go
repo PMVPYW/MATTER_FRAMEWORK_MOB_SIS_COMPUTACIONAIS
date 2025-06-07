@@ -296,7 +296,24 @@ func handleClientMessage(client *Client, msg ClientMessage) { // ClientMessage s
 		log.Printf("chip-tool pairing output:\n%s", commissioningOutput)
 		client.notifyClientLog("commissioning_log", "Commissioning command output:\n"+commissioningOutput)
 
-		if err != nil {
+
+		cmdArgs = []string{"descriptor", "read", "parts-list", payload.NodeID, "0"}
+		
+		cmd = exec.Command(chipToolPath, cmdArgs...)
+
+		var outBuf, errBuf strings.Builder 
+		cmd.Stdout = &outBuf
+		cmd.Stderr = &errBuf
+		err = cmd.Run()            
+		stdout = outBuf.String()   
+		stderr = errBuf.String()  
+
+		re := regexp.MustCompile(`Data = \[\s*(?:\[\d+\.\d+\] \[\d+:\d+\] \[DMG\]\s*)*([0-9]+) \(unsigned\)`)
+
+		match := re.FindStringSubmatch(stdout)
+
+		
+		if err != nil && len(match)<1 {
 			errMsg := fmt.Sprintf("Error commissioning device: %v. Output: %s", err, commissioningOutput)
 			log.Println(errMsg)
 			client.sendPayload("commissioning_status", CommissioningStatusPayload{
@@ -317,9 +334,11 @@ func handleClientMessage(client *Client, msg ClientMessage) { // ClientMessage s
 			Success:               true,
 			NodeID:                payload.NodeID,
 			Details:               "Device commissioned successfully. " + commissioningOutput,
+			EndpointId: 			match[1],
 			OriginalDiscriminator: payload.LongDiscriminator,
 			DiscriminatorAssociatedWithRequest: payload.LongDiscriminator,
 		})
+
 		go readAttribute(client, payload.NodeID, "1", "BasicInformation", "NodeLabel")
 		 
 		if strings.Contains(stdout, "Commissioning success") || strings.Contains(stdout, "commissioning complete") || 
