@@ -195,8 +195,8 @@ func handleClientMessage(client *Client, msg ClientMessage) { // ClientMessage s
 		ctx, cancel := context.WithTimeout(context.Background(), discoveryTimeout)
 		defer cancel() // Ensure context resources are cleaned up
 
-		cmd := exec.CommandContext(ctx, chipToolPath, "discover", "commissionables", "--discover-once", "false")
-
+		// cmd := exec.CommandContext(ctx, chipToolPath, "discover", "commissionables", "--discover-once", "false")
+		cmd := exec.CommandContext(ctx, chipToolPath, "discover", "commissionables")
 		var outBuf, errBuf strings.Builder
 		cmd.Stdout = &outBuf
 		cmd.Stderr = &errBuf
