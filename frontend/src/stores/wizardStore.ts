@@ -218,6 +218,7 @@ export const useWizardStore = defineStore('wizard', () => {
           `[Commissioning Status]: Success: ${statusPayload.success}, Node ID: ${statusPayload.nodeId}, Details: ${statusPayload.details || statusPayload.error || ''}`,
         )
         console.log('CommissioningLogs', commissioningLogs.value)
+        localStorage.setItem(statusPayload.nodeId?.toString(), statusPayload.originalDiscriminator)
         if (statusPayload.success && statusPayload.nodeId) {
           console.log('It Was a sucesss')
           const deviceToUpdate = discoveredDevices.value.find(

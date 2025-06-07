@@ -310,28 +310,19 @@ func handleClientMessage(client *Client, msg ClientMessage) { // ClientMessage s
 		}
 		
 		// Parse commissioning output for success and actual Node ID
-		reNodeID := regexp.MustCompile(`Successfully commissioned device with node ID (0x[0-9a-fA-F]+|\d+)`)
-		matches := reNodeID.FindStringSubmatch(stdout) // Check stdout first
-		fmt.Println("[DEBUG - TESTE - COMMISSIONABLES] - MATCHED", matches)
-		if len(matches) == 0 { // If not in stdout, check stderr as chip-tool can be inconsistent
-			matches = reNodeID.FindStringSubmatch(stderr)
-			fmt.Println("[DEBUG - TESTE - COMMISSIONABLES] - MATCHES (if len == 0)", matches)
-		}
+		// reNodeID := regexp.MustCompile(`Successfully commissioned device with node ID (0x[0-9a-fA-F]+|\d+)`)
 		
-		actualNodeID := ""
-		if len(matches) > 1 {
-			actualNodeID = matches[1]
-			fmt.Println("[DEBUG - TESTE - COMMISSIONABLES] - actualNodeID", actualNodeID)
-			log.Printf("Successfully parsed commissioned Node ID: %s", actualNodeID)
-			client.sendPayload("commissioning_status", CommissioningStatusPayload{
-				Success:               true,
-				NodeID:                actualNodeID,
-				Details:               "Device commissioned successfully. " + commissioningOutput,
-				OriginalDiscriminator: payload.LongDiscriminator,
-				DiscriminatorAssociatedWithRequest: payload.LongDiscriminator,
-			})
-			go readAttribute(client, actualNodeID, "1", "BasicInformation", "NodeLabel")
-		} else if strings.Contains(stdout, "Commissioning success") || strings.Contains(stdout, "commissioning complete") || 
+		log.Printf("Successfully parsed commissioned Node ID: %s", payload.NodeID)
+		client.sendPayload("commissioning_status", CommissioningStatusPayload{
+			Success:               true,
+			NodeID:                payload.NodeID,
+			Details:               "Device commissioned successfully. " + commissioningOutput,
+			OriginalDiscriminator: payload.LongDiscriminator,
+			DiscriminatorAssociatedWithRequest: payload.LongDiscriminator,
+		})
+		go readAttribute(client, payload.NodeID, "1", "BasicInformation", "NodeLabel")
+		 
+		if strings.Contains(stdout, "Commissioning success") || strings.Contains(stdout, "commissioning complete") || 
 		            strings.Contains(stderr, "Commissioning success") || strings.Contains(stderr, "commissioning complete") && stderr == "" { // Added check for empty stderr
 			log.Printf("Commissioning reported success (discriminator %s), but Node ID not directly parsed. Output: %s", payload.LongDiscriminator, commissioningOutput)
 			client.sendPayload("commissioning_status", CommissioningStatusPayload{
