@@ -330,7 +330,8 @@ func handleClientMessage(client *Client, msg ClientMessage) { // ClientMessage s
 		
 		log.Printf("Successfully parsed commissioned Node ID: %s", payload.NodeID)
 		if (len(match) < 2) {
-			return;
+			println("Error: No Node ID found in commissioning output. Output:", match[0])
+			os.Exit(1);
 		}
 		client.sendPayload("commissioning_status", CommissioningStatusPayload{
 			Success:               true,
