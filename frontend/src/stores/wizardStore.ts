@@ -38,7 +38,7 @@ export const useWizardStore = defineStore('wizard', () => {
       id: 1,
       instruction: 'Update package list and install dependencies.',
       command:
-        'sudo apt update && sudo apt install -y git python3-pip build-essential libssl-dev libffi-dev python3-dev libavahi-client-dev',
+        'sudo apt update && sudo apt install -y git python3-pip build-essential libglib2.0-dev-bin libglib2.0-dev libssl-dev libffi-dev python3-dev libavahi-client-dev python3.10-venv',
       expectedOutput: 'Packages updated and dependencies installed.',
       confirmed: false,
     },
@@ -52,19 +52,29 @@ export const useWizardStore = defineStore('wizard', () => {
     {
       id: 3,
       instruction: 'Bootstrap the Matter SDK environment.',
-      command: 'cd ~/connectedhomeip && ./scripts/bootstrap.sh',
+      command: 'cd ~/connectedhomeip && chmod 777 ./scripts/bootstrap.sh && ./scripts/bootstrap.sh',
       expectedOutput: 'Environment bootstrapped.',
       confirmed: false,
     },
     {
       id: 4,
       instruction: 'Activate the Matter SDK environment.',
-      command: 'cd ~/connectedhomeip && source ./scripts/activate.sh',
+      command:
+        'cd ~/connectedhomeip && chmod 777 ./scripts/activate.sh && source ./scripts/activate.sh',
       expectedOutput: 'Environment activated (prompt might change).',
       confirmed: false,
     },
     {
       id: 5,
+      instruction: 'Clone submodules',
+      command:
+        'cd ~/connectedhomeip && git submodule deinit -f . && git submodule update --init --recursive',
+      expectedOutput:
+        'This command produces no output, but you should wait for it to complete to be sure',
+      confirmed: false,
+    },
+    {
+      id: 6,
       instruction: 'Build the chip-tool (this can take a long time).',
       command:
         'cd ~/connectedhomeip && ./scripts/examples/gn_build_example.sh examples/chip-tool out/chip-tool-arm64',
