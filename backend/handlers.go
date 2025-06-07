@@ -329,6 +329,7 @@ func handleClientMessage(client *Client, msg ClientMessage) { // ClientMessage s
 		// reNodeID := regexp.MustCompile(`Successfully commissioned device with node ID (0x[0-9a-fA-F]+|\d+)`)
 		
 		log.Printf("Successfully parsed commissioned Node ID: %s", payload.NodeID)
+		fmt.Println("\nTest: ", len(match))
 		if (len(match) < 2) {
 			return;
 		}
