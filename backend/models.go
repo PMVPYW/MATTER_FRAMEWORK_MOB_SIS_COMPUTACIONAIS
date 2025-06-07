@@ -6,6 +6,16 @@ type ClientMessage struct {
 	Payload interface{} `json:"payload,omitempty"` // Flexible payload based on message type
 }
 
+type ClientMessageGetStatus struct {
+	Type    string      `json:"type"`              // e.g., "discover_devices", "commission_device", "device_command"
+	Payload DeviceGetStatusPayload `json:"payload,omitempty"` // Flexible payload based on message type
+}
+type DeviceGetStatusPayload struct {
+    deviceNodeId     string `json:"deviceNodeId"`
+    deviceEndpointId string `json:"deviceEndpointId"`
+}
+
+
 // ServerMessage represents a message sent to the WebSocket client (Vue frontend)
 type ServerMessage struct {
 	Type    string      `json:"type"`              // e.g., "discovery_result", "commissioning_status", "attribute_update", "log"
@@ -68,6 +78,11 @@ type DeviceCommandPayload struct {
 	Cluster string                 `json:"cluster"` // e.g., "OnOff", "LevelControl"
 	Command string                 `json:"command"` // e.g., "On", "Off", "MoveToLevel"
 	Params  map[string]interface{} `json:"params,omitempty"` // Command-specific parameters
+}
+
+type DeviceStatusPayload struct {
+	nodeID  string                 `json:"nodeId"`  // Node ID of the device to control
+	status string                 `json:"status"` // e.g., "online", "offline", "error"
 }
 
 // CommissioningStatusPayload is sent to the client after a commissioning attempt

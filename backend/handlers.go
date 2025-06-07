@@ -187,6 +187,41 @@ func stripAnsi(str string) string {
 // handleClientMessage processes messages from the client and interacts with chip-tool.
 func handleClientMessage(client *Client, msg ClientMessage) { // ClientMessage should be defined in models.go
 	switch msg.Type {
+	case "get_status":
+		payload, ok:= msg.Payload.(map[string]interface{})
+		if !ok {
+			log.Println("Invalid payload type for get_status")
+			return
+		}
+		var statusPayload DeviceGetStatusPayload
+		jsonPayload, _ := json.Marshal(payload)
+		if err := json.Unmarshal(jsonPayload, &statusPayload); err != nil {
+			log.Println("Failed to convert payload:", err)
+			return
+		}
+
+		log.Println("Getting device status using chip-tool")
+		cmd := exec.Command(chipToolPath, "onoff", "read", "on-off", statusPayload.deviceNodeId, statusPayload.deviceEndpointId)
+		var outBuf, errBuf strings.Builder 
+		cmd.Stdout = &outBuf
+		cmd.Stderr = &errBuf
+		err := cmd.Run()            
+		stdout := outBuf.String()   
+		stderr := errBuf.String()  
+
+		re := regexp.MustCompile(`Data = (true|false)`)
+		match := re.FindStringSubmatch(stdout)
+
+		if err != nil && len(match)<1 {
+			errMsg := fmt.Sprintf("Error getting the status of the device: %v. Output: %s", err, stderr)
+			log.Println(errMsg)
+			return
+		}
+		client.sendPayload("get_status", DeviceStatusPayload{
+			nodeID: statusPayload.deviceNodeId,
+			status: match[1],
+		})
+		break;
 	case "discover_devices":
 		log.Println("Handling discover_devices request (for 'commissionables' devices)")
 		client.notifyClientLog("discovery_log", "Starting 'discover commissionables' via chip-tool...")
