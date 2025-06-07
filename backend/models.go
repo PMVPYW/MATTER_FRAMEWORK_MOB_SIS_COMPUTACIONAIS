@@ -53,7 +53,7 @@ type CommissionDevicePayload struct {
     ICD                                   string `json:"icd,omitempty"`              // Using string as "not present" is a value
     VendorID                              string `json:"vendorId"`
     ProductID                             string `json:"productId"`
-    LongDiscriminator                     string `json:"longDiscriminator"`
+    LongDiscriminator                     string `json:"discriminator"`
     PairingHint                           string `json:"pairingHint"`
     InstanceName                          string `json:"instanceName"`
     CommissioningMode                     string `json:"commissioningMode"`
