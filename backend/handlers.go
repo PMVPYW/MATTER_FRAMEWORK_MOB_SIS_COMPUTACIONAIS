@@ -265,7 +265,7 @@ func handleClientMessage(client *Client, msg ClientMessage) { // ClientMessage s
 			fmt.Println("Error getting current working directory:", err)
 			return
 		}
-		payload.NodeID = fmt.Sprintf("%05d", rand.Intn(100000))
+		payload.NodeID = fmt.Sprintf("%04d", rand.Intn(100000))
 				fmt.Println("\n FDS NODE ID:",  payload.NodeID)
 
 		cmdArgs := []string{"pairing", "onnetwork-long", payload.NodeID, payload.SetupCode, payload.LongDiscriminator}
