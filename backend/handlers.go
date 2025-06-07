@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"os"
 	"os/exec"
 	"regexp"
 	"strconv"
@@ -23,7 +24,7 @@ const (
 	// If installed via snap: "/snap/bin/chip-tool" or "matter-pi-tool.chip-tool"
 	// If built from source: path to your compiled chip-tool executable, e.g., "/home/pi/connectedhomeip/out/chip-tool-arm64/chip-tool"
 	chipToolPath = "/snap/bin/chip-tool" // IMPORTANT: Verify this path on your RPi
-	paaTrustStorePath = "/home/matter/connectedhomeip/credentials/development/paa-root-certs"
+	paaTrustStorePath = "/paa-root-certs/dcld_mirror_CN_Basics_PAA_vid_0x137B.der"
 
 	// paaTrustStorePath might be needed for commissioning production devices.
 	// Example: "/path/to/connectedhomeip/credentials/production/paa-root-certs/"
@@ -256,11 +257,17 @@ func handleClientMessage(client *Client, msg ClientMessage) { // ClientMessage s
 		// Using `pairing code` which is suitable for devices already on the IP network.
 		// The payload.NodeIDToAssign is a suggestion from the frontend for the new node.
 		// chip-tool will manage the actual assignment.
-		cmdArgs := []string{"pairing", "code", payload.NodeIDToAssign, payload.SetupCode}
-		
-		if paaTrustStorePath != "" { // Add PAA trust store if needed for production devices
-		   cmdArgs = append(cmdArgs, "--paa-trust-store-path", paaTrustStorePath)
+
+		var _, err = os.Getwd()
+		if err != nil {
+			fmt.Println("Error getting current working directory:", err)
+			return
 		}
+		cmdArgs := []string{"pairing", "onnetwork-long", payload.NodeIDToAssign, payload.SetupCode, payload.Discriminator}
+		
+		// if paaTrustStorePath != "" { // Add PAA trust store if needed for production devices
+		//    cmdArgs = append(cmdArgs, "--paa-trust-store-path", paaTrustStorePath)
+		// }
 
 		cmd := exec.Command(chipToolPath, cmdArgs...)
 		client.notifyClientLog("commissioning_log", fmt.Sprintf("Executing: %s %s", chipToolPath, strings.Join(cmdArgs, " ")))
@@ -268,7 +275,7 @@ func handleClientMessage(client *Client, msg ClientMessage) { // ClientMessage s
 		var outBuf, errBuf strings.Builder 
 		cmd.Stdout = &outBuf
 		cmd.Stderr = &errBuf
-		err := cmd.Run()            
+		err = cmd.Run()            
 		stdout := outBuf.String()   
 		stderr := errBuf.String()   
 		commissioningOutput := fmt.Sprintf("Stdout:\n%s\nStderr:\n%s", stdout, stderr)
@@ -744,8 +751,8 @@ func startAttributeSubscription(client *Client, nodeID, endpointID, clusterName,
 			client.notifyClientLog("subscription_log", fmt.Sprintf("[%s] Error reading subscription stream: %v", attributeName, err))
 		}
 		log.Printf("[%s] Stdout pipe closed.", subscriptionID)
-		err = cmd.Wait()
-		log.Printf("[%s] chip-tool subscribe command finished. Exit error: %v", subscriptionID, err)
-		client.notifyClientLog("subscription_log", fmt.Sprintf("Subscription for %s/%s on Node %s ended. Error: %v", clusterName, attributeName, nodeID, err))
+		waitErr := cmd.Wait()
+		log.Printf("[%s] chip-tool subscribe command finished. Exit error: %v", subscriptionID, waitErr)
+		client.notifyClientLog("subscription_log", fmt.Sprintf("Subscription for %s/%s on Node %s ended. Error: %v", clusterName, attributeName, nodeID, waitErr))
 	}()
 }
