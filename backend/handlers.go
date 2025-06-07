@@ -266,7 +266,7 @@ func handleClientMessage(client *Client, msg ClientMessage) { // ClientMessage s
 			return
 		}
 		payload.NodeID = strconv.Itoa(rand.Int())
-				fmt.Println("\NODE ID RENAO:",  payload.NodeID)
+				fmt.Println("\nNODE ID:",  payload.NodeID)
 
 		cmdArgs := []string{"pairing", "onnetwork-long", payload.NodeID, payload.SetupCode, payload.LongDiscriminator}
 		fmt.Println("\nCMDARGS:",  cmdArgs)
