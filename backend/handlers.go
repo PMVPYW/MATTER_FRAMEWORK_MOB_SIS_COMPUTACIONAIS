@@ -282,8 +282,9 @@ func handleClientMessage(client *Client, msg ClientMessage) { // ClientMessage s
 		// }
 
 		cmd := exec.Command(chipToolPath, cmdArgs...)
+		fmt.Println("[DEBUG - TESTE - COMMISSIONABLES] - CMD", cmd)
+		fmt.Println("[DEBUG - TESTE - COMMISSIONABLES] - CMD", strings.Join(cmdArgs, " "))
 		client.notifyClientLog("commissioning_log", fmt.Sprintf("Executing: %s %s", chipToolPath, strings.Join(cmdArgs, " ")))
-		
 		var outBuf, errBuf strings.Builder 
 		cmd.Stdout = &outBuf
 		cmd.Stderr = &errBuf
@@ -310,13 +311,16 @@ func handleClientMessage(client *Client, msg ClientMessage) { // ClientMessage s
 		// Parse commissioning output for success and actual Node ID
 		reNodeID := regexp.MustCompile(`Successfully commissioned device with node ID (0x[0-9a-fA-F]+|\d+)`)
 		matches := reNodeID.FindStringSubmatch(stdout) // Check stdout first
+		fmt.Println("[DEBUG - TESTE - COMMISSIONABLES] - MATCHED", matches)
 		if len(matches) == 0 { // If not in stdout, check stderr as chip-tool can be inconsistent
 			matches = reNodeID.FindStringSubmatch(stderr)
+			fmt.Println("[DEBUG - TESTE - COMMISSIONABLES] - MATCHES (if len == 0)", matches)
 		}
 		
 		actualNodeID := ""
 		if len(matches) > 1 {
 			actualNodeID = matches[1]
+			fmt.Println("[DEBUG - TESTE - COMMISSIONABLES] - actualNodeID", actualNodeID)
 			log.Printf("Successfully parsed commissioned Node ID: %s", actualNodeID)
 			client.sendPayload("commissioning_status", CommissioningStatusPayload{
 				Success:               true,

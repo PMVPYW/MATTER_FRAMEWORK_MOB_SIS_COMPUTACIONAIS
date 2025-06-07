@@ -210,43 +210,46 @@ export const useWizardStore = defineStore('wizard', () => {
         commissioningLogs.value.push(`[Commissioning Log]: ${message.payload as string}`)
         break
       case 'commissioning_status':
-        var statusPayload2 = message.payload as CommissioningStatusPayload
+        var statusPayload = message.payload as CommissioningStatusPayload
+
+        console.log('statusPayload', statusPayload)
+        console.log('message.payload', message.payload)
         commissioningLogs.value.push(
-          `[Commissioning Status]: Success: ${statusPayload2.success}, Node ID: ${statusPayload2.nodeId}, Details: ${statusPayload2.details || statusPayload2.error || ''}`,
+          `[Commissioning Status]: Success: ${statusPayload.success}, Node ID: ${statusPayload.nodeId}, Details: ${statusPayload.details || statusPayload.error || ''}`,
         )
         console.log('CommissioningLogs', commissioningLogs.value)
-        if (statusPayload2.success && statusPayload2.nodeId) {
+        if (statusPayload.success && statusPayload.nodeId) {
           console.log('It Was a sucesss')
           const deviceToUpdate = discoveredDevices.value.find(
             (d) =>
-              d.discriminator === statusPayload2.originalDiscriminator ||
-              d.discriminator === statusPayload2.discriminatorAssociatedWithRequest,
+              d.discriminator === statusPayload.originalDiscriminator ||
+              d.discriminator === statusPayload.discriminatorAssociatedWithRequest,
           )
           console.log('DeviceToUpdate', deviceToUpdate)
           if (deviceToUpdate) {
-            deviceToUpdate.nodeId = statusPayload2.nodeId
+            deviceToUpdate.nodeId = statusPayload.nodeId
             if (
               selectedDevice.value &&
               selectedDevice.value.discriminator === deviceToUpdate.discriminator
             ) {
-              selectedDevice.value.nodeId = statusPayload2.nodeId
+              selectedDevice.value.nodeId = statusPayload.nodeId
             }
           } else {
             const newDevice: DiscoveredDevice = {
-              id: `device_node_${statusPayload2.nodeId}`,
-              name: `Device ${statusPayload2.nodeId}`, // Default name
-              nodeId: statusPayload2.nodeId,
+              id: `device_node_${statusPayload.nodeId}`,
+              name: `Device ${statusPayload.nodeId}`, // Default name
+              nodeId: statusPayload.nodeId,
               discriminator:
-                statusPayload2.originalDiscriminator ||
-                statusPayload2.discriminatorAssociatedWithRequest ||
+                statusPayload.originalDiscriminator ||
+                statusPayload.discriminatorAssociatedWithRequest ||
                 'N/A',
             }
-            if (!discoveredDevices.value.find((d) => d.nodeId === statusPayload2.nodeId)) {
+            if (!discoveredDevices.value.find((d) => d.nodeId === statusPayload.nodeId)) {
               discoveredDevices.value.push(newDevice)
             }
           }
           const newlyCommissioned = discoveredDevices.value.find(
-            (d) => d.nodeId === statusPayload2.nodeId,
+            (d) => d.nodeId === statusPayload.nodeId,
           )
           if (newlyCommissioned) {
             selectedDevice.value = newlyCommissioned
