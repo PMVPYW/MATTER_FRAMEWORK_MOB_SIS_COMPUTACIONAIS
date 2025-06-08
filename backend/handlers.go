@@ -226,7 +226,6 @@ func handleClientMessage(client *Client, msg ClientMessage) { // ClientMessage s
 			log.Println(errMsg)
 			client.notifyClientLog("discovery_log", "Error during discovery: "+errMsg)
 		}
-		fmt.Println("ConaAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAa", DiscoveryResultPayload{Devices: []DiscoveredDevice{}, Error: errMsg})
 
 		client.sendPayload("discovery_result", DiscoveryResultPayload{Devices: []DiscoveredDevice{}, Error: errMsg})
 
