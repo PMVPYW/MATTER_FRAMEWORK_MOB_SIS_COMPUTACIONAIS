@@ -41,10 +41,13 @@
         <button @click="sendCommand('OnOff', 'Off')">Turn Off</button>
         <button @click="sendCommand('OnOff', 'Toggle')">Toggle</button>
         <p>
-          Current Status: <strong>{{ getDeviceStatus('OnOff_OnOff', 'Unknown') }}</strong>
+          Current Status:
+          <strong>{{
+            getDeviceStatus('OnOff_on-off', 'Unknown') == true ? 'Turned on' : 'Turned off'
+          }}</strong>
         </p>
       </div>
-
+      <!--
       <div class="control-group level-control">
         <h5>Brightness Control (Cluster: LevelControl)</h5>
         <input
@@ -63,7 +66,7 @@
           <strong>{{ getDeviceStatus('LevelControl_CurrentLevel', 'Unknown') }}</strong>
         </p>
       </div>
-    </div>
+    --></div>
     <div v-else-if="commissionedDevices.length > 0">
       <p>Please select a commissioned device from the list above to control it.</p>
     </div>
@@ -74,12 +77,18 @@
 import { ref, watch, computed, Ref, ComputedRef } from 'vue'
 import { useWizardStore } from '@/stores/wizardStore' // Using alias
 import type { DiscoveredDevice } from '@/types' // Using alias
+import { onMounted } from 'vue'
 
 const wizardStore = useWizardStore()
 const brightnessLevel: Ref<number> = ref(128)
 
 const commissionedDevices: ComputedRef<DiscoveredDevice[]> = computed(() => {
   return wizardStore.discoveredDevices.filter((d) => !!d.nodeId)
+})
+
+onMounted(() => {
+  sendCommand('OnOff', 'read', { attribute: 'on-off' })
+  console.log(wizardStore)
 })
 
 function getDeviceStatus(attributeKey: string, defaultValue: any = 'N/A'): any {

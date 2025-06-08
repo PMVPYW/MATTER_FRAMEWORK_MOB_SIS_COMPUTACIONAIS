@@ -293,6 +293,7 @@ export const useWizardStore = defineStore('wizard', () => {
           const key = `${attrPayload.cluster}_${attrPayload.attribute}`
           deviceStatus.value[nodeIdStr][key] = attrPayload.value
           deviceStatus.value = { ...deviceStatus.value }
+          console.log(deviceStatus.value[nodeIdStr], 'MEGA LKOG')
         }
         break
       case 'command_response':
