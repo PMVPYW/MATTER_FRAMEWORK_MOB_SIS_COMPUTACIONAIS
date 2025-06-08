@@ -57,7 +57,8 @@ type CommissionDevicePayload struct {
     PairingHint                           string `json:"pairingHint"`
     InstanceName                          string `json:"instanceName"`
     CommissioningMode                     string `json:"commissioningMode"`
-    NodeID                                string `json:string`
+    NodeID                                string `json:"nodeid"`
+    EndpointId                            string `json:"endpointid"`
     SupportsCommissionerGeneratedPasscode string `json:"supportsCommissionerGeneratedPasscode"`
 }
 
@@ -69,6 +70,11 @@ type DeviceCommandPayload struct {
 	Params  map[string]interface{} `json:"params,omitempty"` // Command-specific parameters
 }
 
+type GetStatusPayload struct {
+    NodeID  string                 `json:"nodeId"`  // Node ID of the device to control
+    EndpointId                     string `json:"endpointId"`
+}
+
 // CommissioningStatusPayload is sent to the client after a commissioning attempt
 type CommissioningStatusPayload struct {
 	Success                        bool   `json:"success"`
@@ -76,6 +82,7 @@ type CommissioningStatusPayload struct {
 	Details                        string `json:"details,omitempty"`
 	Error                          string `json:"error,omitempty"`
 	OriginalDiscriminator          string `json:"originalDiscriminator,omitempty"` // Helps frontend map back
+    EndpointId                     string `json:"endpointId,omitempty"`
 	DiscriminatorAssociatedWithRequest string `json:"discriminatorAssociatedWithRequest,omitempty"` // From client request
 }
 
@@ -92,6 +99,14 @@ type AttributeUpdatePayload struct {
 type CommandResponsePayload struct {
 	Success bool   `json:"success"`
 	NodeID  string `json:"nodeId,omitempty"`
+	Details string `json:"details,omitempty"`
+	Error   string `json:"error,omitempty"`
+}
+
+type StatusResponsePayload struct {
+	Success bool   `json:"success"`
+	NodeID  string `json:"nodeId,omitempty"`
+    EndpointId  string `json:"endpointId,omitempty"`
 	Details string `json:"details,omitempty"`
 	Error   string `json:"error,omitempty"`
 }
