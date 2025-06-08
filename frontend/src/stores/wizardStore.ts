@@ -128,19 +128,11 @@ export const useWizardStore = defineStore('wizard', () => {
     sendMessage({ type: 'discover_devices' })
   }
 
-  function getDeviceStatus(deviceNodeId: string, deviceEndpointId: string): void {
-    valueLogs.value.push(
-      'Attempting to get status from device with nodeid: ' +
-        deviceNodeId +
-        ' and EndpointId ' +
-        deviceEndpointId,
-    )
-    sendMessage({
-      type: 'get_status',
-      payload: {
-        deviceNodeId: deviceNodeId,
-        deviceEndpointId: deviceEndpointId,
-      },
+  function getDeviceStatus(deviceNodeId: string, deviceEndpointId: string) {
+    console.log(`Getting status from device ${deviceNodeId} on endpoint ${deviceEndpointId}`)
+    sendDeviceCommand(deviceNodeId, 'OnOff', 'read', {
+      attribute: 'on-off',
+      endpointId: deviceEndpointId,
     })
   }
 
@@ -209,18 +201,18 @@ export const useWizardStore = defineStore('wizard', () => {
       case 'discovery_log':
         commissioningLogs.value.push(`[Discovery Log]: ${message.payload as string}`)
         break
-      case 'get_status':
-        const deviceStatusPayload = message.payload as deviceStatusPayload
-        if (deviceStatusPayload) {
-          const currentDeviceIndex = discoveredDevices.value.findIndex(
-            (device) => String(device.nodeId) === deviceStatusPayload.nodeId,
-          )
-          if (currentDeviceIndex < 0) return
-          discoveredDevices.value[currentDeviceIndex].status = deviceStatusPayload.status
-        } else {
-          console.log('oh nooo... la polizia....')
-        }
-        break
+      // case 'get_status':
+      //   const deviceStatusPayload = message.payload as deviceStatusPayload
+      //   if (deviceStatusPayload) {
+      //     const currentDeviceIndex = discoveredDevices.value.findIndex(
+      //       (device) => String(device.nodeId) === deviceStatusPayload.nodeId,
+      //     )
+      //     if (currentDeviceIndex < 0) return
+      //     discoveredDevices.value[currentDeviceIndex].status = deviceStatusPayload.status
+      //   } else {
+      //     console.log('oh nooo... la polizia....')
+      //   }
+      //   break
       case 'discovery_result':
         const discoveryPayload = message.payload as DiscoveryResultPayload
         if (discoveryPayload && Array.isArray(discoveryPayload.devices)) {
@@ -229,6 +221,7 @@ export const useWizardStore = defineStore('wizard', () => {
             id: d.id || `device_${d.discriminator}_${d.vendorId}_${d.productId}`,
           }))
           console.log('discoveredDevices', discoveredDevices.value)
+          console.log('discoveredDevices - message.payload', message.payload)
         } else {
           discoveredDevices.value = []
         }

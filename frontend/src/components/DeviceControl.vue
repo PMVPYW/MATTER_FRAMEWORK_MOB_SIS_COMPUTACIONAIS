@@ -83,7 +83,6 @@ const commissionedDevices: ComputedRef<DiscoveredDevice[]> = computed(() => {
 })
 
 function getDeviceStatus(attributeKey: string, defaultValue: any = 'N/A'): any {
-  console.log('wizardStore', wizardStore)
   if (wizardStore.selectedDevice && wizardStore.selectedDevice.nodeId) {
     const nodeIdStr = String(wizardStore.selectedDevice.nodeId)
     const status = wizardStore.deviceStatus[nodeIdStr]
@@ -127,7 +126,16 @@ watch(
 
 function sendCommand(cluster: string, command: string, params: Record<string, any> = {}): void {
   if (wizardStore.selectedDevice && wizardStore.selectedDevice.nodeId) {
-    wizardStore.sendDeviceCommand(wizardStore.selectedDevice.nodeId, cluster, command, params)
+    console.log(
+      'endpointId: wizardStore.selectedDevice?.endpointId: ',
+      wizardStore.selectedDevice.endpointId,
+    )
+
+    const finalParams = {
+      endpointId: wizardStore.selectedDevice?.endpointId || 13,
+      ...params,
+    }
+    wizardStore.sendDeviceCommand(wizardStore.selectedDevice.nodeId, cluster, command, finalParams)
   } else {
     alert('No device selected or device has no Node ID.')
   }

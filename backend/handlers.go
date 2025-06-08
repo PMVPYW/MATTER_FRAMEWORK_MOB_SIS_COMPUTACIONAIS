@@ -255,11 +255,6 @@ func handleClientMessage(client *Client, msg ClientMessage) { // ClientMessage s
 		
 		client.notifyClientLog("commissioning_log", fmt.Sprintf("Attempting to commission Node ID %s with setup code %s (using 'pairing code')", payload.CommissioningMode, payload.SetupCode))
 
-		// **** UPDATED Commissioning Command for IP-based devices ****
-		// Using `pairing code` which is suitable for devices already on the IP network.
-		// The payload.NodeIDToAssign is a suggestion from the frontend for the new node.
-		// chip-tool will manage the actual assignment.
-
 		var _, err = os.Getwd()
 		if err != nil {
 			fmt.Println("Error getting current working directory:", err)
@@ -267,6 +262,8 @@ func handleClientMessage(client *Client, msg ClientMessage) { // ClientMessage s
 		}
 		payload.NodeID = fmt.Sprintf("%04d", rand.Intn(100000))
 				fmt.Println("\n FDS NODE ID:",  payload.NodeID)
+
+		//TODO DEFINIR PAYLOAD.ENDPOINTID
 
 		cmdArgs := []string{"pairing", "onnetwork-long", payload.NodeID, payload.SetupCode, payload.LongDiscriminator}
 		fmt.Println("\nCMDARGS:",  cmdArgs)
@@ -276,6 +273,7 @@ func handleClientMessage(client *Client, msg ClientMessage) { // ClientMessage s
 		fmt.Println("\nPAYLOAD ProductID:",  payload.ProductID)
 		fmt.Println("\nPAYLOAD SetupCode:",  payload.SetupCode)
 		fmt.Println("\nPAYLOAD VendorID:",  payload.VendorID)
+		fmt.Println("\nPAYLOAD EndpointId:",  payload.EndpointId)
 		// cmdArgs := []string{"pairing", "onnetwork-long", payload.NodeIDToAssign, payload.SetupCode, payload.Discriminator}
 		
 		// if paaTrustStorePath != "" { // Add PAA trust store if needed for production devices
@@ -289,7 +287,7 @@ func handleClientMessage(client *Client, msg ClientMessage) { // ClientMessage s
 		var outBuf, errBuf strings.Builder 
 		cmd.Stdout = &outBuf
 		cmd.Stderr = &errBuf
-		err = cmd.Run()            
+		err = cmd.Run()
 		stdout := outBuf.String()   
 		stderr := errBuf.String()   
 		commissioningOutput := fmt.Sprintf("Stdout:\n%s\nStderr:\n%s", stdout, stderr)
@@ -301,17 +299,34 @@ func handleClientMessage(client *Client, msg ClientMessage) { // ClientMessage s
 		
 		cmd = exec.Command(chipToolPath, cmdArgs...)
 
-		var outBuf, errBuf strings.Builder 
+		// var outBuf, errBuf strings.Builder 
 		cmd.Stdout = &outBuf
 		cmd.Stderr = &errBuf
 		err = cmd.Run()            
 		stdout = outBuf.String()   
 		stderr = errBuf.String()  
 
-		re := regexp.MustCompile(`Data = \[\s*(?:\[\d+\.\d+\] \[\d+:\d+\] \[DMG\]\s*)*([0-9]+) \(unsigned\)`)
-
+		// re := regexp.MustCompile(`Data = \[\s*(?:\[\d+\.\d+\] \[\d+:\d+\] \[DMG\]\s*)*([0-9]+) \(unsigned\)`)
+		re := regexp.MustCompile(`\[TOO\]\s+\[\d+\]:\s+(\d+)`)
+		fmt.Println("=== CHIP TOOL RAW OUTPUT ===")
+		fmt.Println(stdout)
+		fmt.Println("===========================")
 		match := re.FindStringSubmatch(stdout)
 
+		if len(match) < 2 {
+			log.Printf("Failed to parse endpointId from descriptor read output. stdout: %s", stdout)
+			client.sendPayload("commissioning_status", CommissioningStatusPayload{
+				Success:               false,
+				Error:                 "NodeID: " + payload.NodeID + "Failed to extract endpointId from descriptor read",
+				Details:               stdout,
+				OriginalDiscriminator: payload.LongDiscriminator,
+				DiscriminatorAssociatedWithRequest: payload.LongDiscriminator,
+			})
+			return
+		}
+
+		fmt.Printf("match[0]: %s\n", match[0])
+		fmt.Printf("match[1] (EndpointId): %s\n", match[1])
 		
 		if err != nil && len(match)<1 {
 			errMsg := fmt.Sprintf("Error commissioning device: %v. Output: %s", err, commissioningOutput)
@@ -330,16 +345,25 @@ func handleClientMessage(client *Client, msg ClientMessage) { // ClientMessage s
 		// reNodeID := regexp.MustCompile(`Successfully commissioned device with node ID (0x[0-9a-fA-F]+|\d+)`)
 		
 		log.Printf("Successfully parsed commissioned Node ID: %s", payload.NodeID)
+		// log.Println("Match[0]", match[0])
+		// log.Println("Match[1]", match[1])
+		payload.EndpointId = match[1]
 		client.sendPayload("commissioning_status", CommissioningStatusPayload{
 			Success:               true,
 			NodeID:                payload.NodeID,
 			Details:               "Device commissioned successfully. " + commissioningOutput,
-			EndpointId: 			match[1],
+			EndpointId: 		   payload.EndpointId,
 			OriginalDiscriminator: payload.LongDiscriminator,
 			DiscriminatorAssociatedWithRequest: payload.LongDiscriminator,
 		})
+		
+		log.Printf("PAYLOAD: %s", payload)
+		log.Printf("PAYLOAD.endpointId: %s", payload.EndpointId)
 
-		go readAttribute(client, payload.NodeID, "1", "BasicInformation", "NodeLabel")
+		//TODO: RENATO 08/06 - 13:00
+		// go readAttribute(client, payload.NodeID, payload.EndpointId, "BasicInformation", "NodeLabel")
+		go readAttribute(client, payload.NodeID, payload.EndpointId, "BasicInformation", "product-name")
+		// go readAttribute(client, payload.NodeID, "0", "BasicInformation", "NodeLabel")
 		 
 		if strings.Contains(stdout, "Commissioning success") || strings.Contains(stdout, "commissioning complete") || 
 		            strings.Contains(stderr, "Commissioning success") || strings.Contains(stderr, "commissioning complete") && stderr == "" { // Added check for empty stderr
@@ -360,78 +384,192 @@ func handleClientMessage(client *Client, msg ClientMessage) { // ClientMessage s
 				DiscriminatorAssociatedWithRequest: payload.LongDiscriminator,
 			})
 		}
+	// case "get_status":
+	// 	var payload GetStatusPayload
+	// 	payloadBytes, _ := json.Marshal(msg.Payload)
+	// 	fmt.Println("msg Payload" , msg.Payload)
+	// 	if err := json.Unmarshal(payloadBytes, &payload); err != nil {
+	// 		client.notifyClientLog("status_response", "Invalid payload for get_status: "+err.Error())
+	// 		client.sendPayload("status_response", StatusResponsePayload{Success: false, Error: "Invalid payload: " + err.Error()}) // Assumes StatusResponsePayload is in models.go
+	// 		return
+	// 	}
+	// 	log.Printf("Handling get_status request: %+v", payload)
+	// 	if payload.NodeID == "" {
+	// 		client.sendPayload("get_status", StatusResponsePayload{Success: false, NodeID: payload.NodeID, EndpointId: payload.EndpointId, Error: "Missing nodeId or EndpointId"})
+	// 		return
+	// 	}
+	// 	cmdArgs := []string{"onoff", "read", "on-off", payload.NodeID, payload.EndpointId}
+	// 	cmd := exec.Command(chipToolPath, cmdArgs...) // Re-declare cmd
+	// 	client.notifyClientLog("status_response", fmt.Sprintf("Executing: %s %s", chipToolPath, strings.Join(cmdArgs, " ")))
+	// 	var outBuf, errBuf strings.Builder // Re-declare for this scope
+	// 	cmd.Stdout = &outBuf
+	// 	cmd.Stderr = &errBuf
+	// 	err := cmd.Run() // Re-declare err
+	// 	stdout := outBuf.String() // Re-declare
+	// 	stderr := errBuf.String() // Re-declare
+	// 	cmdOutput := fmt.Sprintf("Stdout:\n%s\nStderr:\n%s", stdout, stderr)
+	// 	log.Printf("chip-tool command output for %s.%s %s %s:\n%s", payload.NodeID, "chip-tool onoff read on-off", payload.NodeID, payload.EndpointId, cmdOutput)
+	// 	if err != nil {
+	// 		errMsg := fmt.Sprintf("Error executing %s.%s %s %s:\n%s", payload.NodeID, "chip-tool onoff read on-off", payload.NodeID, payload.EndpointId, cmdOutput)
+	// 		log.Println(errMsg)
+	// 		client.sendPayload("status_response", CommandResponsePayload{Success: false, NodeID: payload.NodeID, Error: errMsg, Details: cmdOutput})
+	// 		return
+	// 	}
+	// 	if strings.Contains(stdout, "CHIP Error") || strings.Contains(stderr, "CHIP Error") || strings.Contains(stderr, "Error:") {
+	// 		errMsg := "Command executed but chip-tool reported an error in its output."
+	// 		log.Println(errMsg, "Details:", cmdOutput)
+	// 		client.sendPayload("status_response", CommandResponsePayload{Success: false, NodeID: payload.NodeID, Error: errMsg, Details: cmdOutput})
+	// 	} else {
+	// 		// log.Printf("Command %s.%s on Node %s executed. Output: %s", payload.Cluster, payload.Command, payload.NodeID, cmdOutput)
+	// 		client.sendPayload("status_response", CommandResponsePayload{Success: true, NodeID: payload.NodeID, Details: "Command executed. Output: " + cmdOutput})
+	// 		if payload.Cluster == "OnOff" && (payload.Command == "On" || payload.Command == "Off" || payload.Command == "Toggle") {
+	// 			go readAttribute(client, payload.NodeID, endpointID, "OnOff", "OnOff")
+	// 		}
+	// 		if payload.Cluster == "LevelControl" && payload.Command == "MoveToLevel" {
+	// 			go readAttribute(client, payload.NodeID, endpointID, "LevelControl", "CurrentLevel")
+	// 		}
+	// 	}
 
 	case "device_command":
-		var payload DeviceCommandPayload // Assumes DeviceCommandPayload is in models.go
-		payloadBytes, _ := json.Marshal(msg.Payload)
-		fmt.Println("msg Payload" , msg.Payload)
-		if err := json.Unmarshal(payloadBytes, &payload); err != nil {
-			client.notifyClientLog("command_response", "Invalid payload for device_command: "+err.Error())
-			client.sendPayload("command_response", CommandResponsePayload{Success: false, Error: "Invalid payload: " + err.Error()}) // Assumes CommandResponsePayload is in models.go
-			return
-		}
-		log.Printf("Handling device_command request: %+v", payload)
-		if payload.NodeID == "" || payload.Cluster == "" || payload.Command == "" {
-			client.sendPayload("command_response", CommandResponsePayload{Success: false, NodeID: payload.NodeID, Error: "Missing nodeId, cluster, or command"})
-			return
-		}
-		endpointID := "1"
-		cmdArgs := []string{strings.ToLower(payload.Cluster), strings.ToLower(payload.Command)}
-		switch payload.Cluster {
-		case "OnOff":
-		case "LevelControl":
-			if payload.Command == "MoveToLevel" {
-				levelVal, okL := payload.Params["level"].(float64)
-				ttVal, okTT := payload.Params["transitionTime"].(float64)
-				if !okL {
-					client.sendPayload("command_response", CommandResponsePayload{Success: false, NodeID: payload.NodeID, Error: "Missing or invalid 'level' parameter for MoveToLevel"})
-					return
-				}
-				cmdArgs = append(cmdArgs, strconv.Itoa(int(levelVal)))
-				if okTT {
-					cmdArgs = append(cmdArgs, strconv.Itoa(int(ttVal)))
-				} else {
-					cmdArgs = append(cmdArgs, "0")
-				}
-				cmdArgs = append(cmdArgs, "0", "0")
+	var payload DeviceCommandPayload
+	payloadBytes, _ := json.Marshal(msg.Payload)
+	fmt.Println("msg Payload:", msg.Payload)
+
+	if err := json.Unmarshal(payloadBytes, &payload); err != nil {
+		client.notifyClientLog("command_response", "Invalid payload for device_command: "+err.Error())
+		client.sendPayload("command_response", CommandResponsePayload{
+			Success: false,
+			Error:   "Invalid payload: " + err.Error(),
+		})
+		return
+	}
+
+	log.Printf("Handling device_command request: %+v", payload)
+
+	if payload.NodeID == "" || payload.Cluster == "" || payload.Command == "" {
+		client.sendPayload("command_response", CommandResponsePayload{
+			Success: false,
+			NodeID:  payload.NodeID,
+			Error:   "Missing nodeId, cluster, or command",
+		})
+		return
+	}
+
+	endpointID := "13"
+	fmt.Println("payload.Params", payload.Params["endpointId"])
+	if val, ok := payload.Params["endpointId"].(string); ok && val != "" {
+		endpointID = val
+	}
+
+	var cmdArgs []string
+
+	switch payload.Cluster {
+	case "OnOff":
+		if strings.ToLower(payload.Command) == "read" {
+			attribute, ok := payload.Params["attribute"].(string)
+			if !ok {
+				client.sendPayload("command_response", CommandResponsePayload{
+					Success: false,
+					NodeID:  payload.NodeID,
+					Error:   "Missing or invalid 'attribute' parameter for read command",
+				})
+				return
 			}
-		default:
-			for k, v := range payload.Params {
-				client.notifyClientLog("command_response", fmt.Sprintf("Warning: Generic param handling for %s.%s - %s:%v. May not be correct for chip-tool.", payload.Cluster, payload.Command, k, v))
-				cmdArgs = append(cmdArgs, fmt.Sprintf("%v", v))
+
+			cmdArgs = []string{
+				"onoff",
+				"read",
+				attribute,
+				payload.NodeID,
+				endpointID,
 			}
+		} else {
+			cmdArgs = []string{
+				"onoff",
+				strings.ToLower(payload.Command),
+				payload.NodeID,
+				endpointID,
+			}
+		}
+
+	case "LevelControl":
+		if payload.Command == "MoveToLevel" {
+			levelVal, okL := payload.Params["level"].(float64)
+			ttVal, _ := payload.Params["transitionTime"].(float64)
+			if !okL {
+				client.sendPayload("command_response", CommandResponsePayload{
+					Success: false,
+					NodeID:  payload.NodeID,
+					Error:   "Missing or invalid 'level' parameter for MoveToLevel",
+				})
+				return
+			}
+
+			cmdArgs = []string{
+				"levelcontrol",
+				"move-to-level",
+				strconv.Itoa(int(levelVal)),
+				strconv.Itoa(int(ttVal)),
+				"0", // With On/Off
+				"0", // Endpoint ID (or more options)
+				endpointID,
+				payload.NodeID,
+			}
+		}
+	default:
+		cmdArgs = []string{
+			strings.ToLower(payload.Cluster),
+			strings.ToLower(payload.Command),
+		}
+		for _, v := range payload.Params {
+			cmdArgs = append(cmdArgs, fmt.Sprintf("%v", v))
 		}
 		cmdArgs = append(cmdArgs, payload.NodeID, endpointID)
-		cmd := exec.Command(chipToolPath, cmdArgs...) // Re-declare cmd
-		client.notifyClientLog("command_response", fmt.Sprintf("Executing: %s %s", chipToolPath, strings.Join(cmdArgs, " ")))
-		var outBuf, errBuf strings.Builder // Re-declare for this scope
-		cmd.Stdout = &outBuf
-		cmd.Stderr = &errBuf
-		err := cmd.Run() // Re-declare err
-		stdout := outBuf.String() // Re-declare
-		stderr := errBuf.String() // Re-declare
-		cmdOutput := fmt.Sprintf("Stdout:\n%s\nStderr:\n%s", stdout, stderr)
-		log.Printf("chip-tool command output for %s.%s on %s:\n%s", payload.Cluster, payload.Command, payload.NodeID, cmdOutput)
+	}
+
+	// Execute the chip-tool command
+	cmd := exec.Command(chipToolPath, cmdArgs...)
+	client.notifyClientLog("command_response", fmt.Sprintf("Executing: %s %s", chipToolPath, strings.Join(cmdArgs, " ")))
+
+	var outBuf, errBuf strings.Builder
+	cmd.Stdout = &outBuf
+	cmd.Stderr = &errBuf
+
+	err := cmd.Run()
+	stdout := outBuf.String()
+	stderr := errBuf.String()
+	cmdOutput := fmt.Sprintf("Stdout:\n%s\nStderr:\n%s", stdout, stderr)
+
+	log.Printf("chip-tool output for %s.%s on %s:\n%s", payload.Cluster, payload.Command, payload.NodeID, cmdOutput)
+
+	if err != nil || strings.Contains(stdout, "CHIP Error") || strings.Contains(stderr, "CHIP Error") || strings.Contains(stderr, "Error:") {
+		errMsg := "Command failed or chip-tool reported an error."
 		if err != nil {
-			errMsg := fmt.Sprintf("Error executing %s.%s on %s: %v. Output: %s", payload.Command, payload.Cluster, payload.NodeID, err, cmdOutput)
-			log.Println(errMsg)
-			client.sendPayload("command_response", CommandResponsePayload{Success: false, NodeID: payload.NodeID, Error: errMsg, Details: cmdOutput})
-			return
+			errMsg = fmt.Sprintf("Execution error: %v", err)
 		}
-		if strings.Contains(stdout, "CHIP Error") || strings.Contains(stderr, "CHIP Error") || strings.Contains(stderr, "Error:") {
-			errMsg := "Command executed but chip-tool reported an error in its output."
-			log.Println(errMsg, "Details:", cmdOutput)
-			client.sendPayload("command_response", CommandResponsePayload{Success: false, NodeID: payload.NodeID, Error: errMsg, Details: cmdOutput})
-		} else {
-			log.Printf("Command %s.%s on Node %s executed. Output: %s", payload.Cluster, payload.Command, payload.NodeID, cmdOutput)
-			client.sendPayload("command_response", CommandResponsePayload{Success: true, NodeID: payload.NodeID, Details: "Command executed. Output: " + cmdOutput})
-			if payload.Cluster == "OnOff" && (payload.Command == "On" || payload.Command == "Off" || payload.Command == "Toggle") {
-				go readAttribute(client, payload.NodeID, endpointID, "OnOff", "OnOff")
-			}
-			if payload.Cluster == "LevelControl" && payload.Command == "MoveToLevel" {
-				go readAttribute(client, payload.NodeID, endpointID, "LevelControl", "CurrentLevel")
-			}
-		}
+		client.sendPayload("command_response", CommandResponsePayload{
+			Success: false,
+			NodeID:  payload.NodeID,
+			Error:   errMsg,
+			Details: cmdOutput,
+		})
+		return
+	}
+
+	client.sendPayload("command_response", CommandResponsePayload{
+		Success: true,
+		NodeID:  payload.NodeID,
+		Details: "Command executed. Output: " + cmdOutput,
+	})
+
+	// Optional follow-up reads
+	if payload.Cluster == "OnOff" && (payload.Command == "On" || payload.Command == "Off" || payload.Command == "Toggle") {
+		go readAttribute(client, payload.NodeID, endpointID, "OnOff", "on-off")
+	}
+	if payload.Cluster == "LevelControl" && payload.Command == "MoveToLevel" {
+		go readAttribute(client, payload.NodeID, endpointID, "LevelControl", "current-level")
+	}
+
 
 	case "subscribe_attribute":
 		var payload SubscribeAttributePayload // Already defined globally in this file for the example
@@ -692,9 +830,15 @@ func (c *Client) sendPayload(msgType string, payload interface{}) {
 	c.notifyClient(msgType, payload)
 }
 
+//TODO: RENATO 08/06 - 13:00
 func readAttribute(client *Client, nodeID, endpointID, clusterName, attributeName string) {
+	if clusterName == "BasicInformation" {
+		endpointID = "0"
+	}
 	log.Printf("Attempting to read attribute %s.%s for Node %s Endpoint %s", clusterName, attributeName, nodeID, endpointID)
 	client.notifyClientLog("commissioning_log", fmt.Sprintf("Reading attribute %s.%s for Node %s...", clusterName, attributeName, nodeID))
+
+
 	cmdArgs := []string{strings.ToLower(clusterName), "read", attributeName, nodeID, endpointID} // Attribute name often PascalCase for chip-tool read
 	cmd := exec.Command(chipToolPath, cmdArgs...)
 	var outBuf, errBuf strings.Builder
@@ -706,11 +850,15 @@ func readAttribute(client *Client, nodeID, endpointID, clusterName, attributeNam
 	cmdOutput := fmt.Sprintf("Read Attribute Stdout:\n%s\nRead Attribute Stderr:\n%s", stdout, stderr)
 	log.Println(cmdOutput)
 
-	if err != nil {
-		log.Printf("Error reading attribute %s.%s for Node %s: %v. Output: %s", clusterName, attributeName, nodeID, err, cmdOutput)
-		client.notifyClientLog("commissioning_log", fmt.Sprintf("Failed to read attribute %s.%s: %v", clusterName, attributeName, err))
-		return
-	}
+	 if err != nil {
+        // Cria uma mensagem de erro muito mais detalhada
+        fullErrorMsg := fmt.Sprintf("Stderr: %s", strings.TrimSpace(stderr))
+        log.Printf("Error reading attribute %s.%s for Node %s. %s", clusterName, attributeName, nodeID, fullErrorMsg)
+
+        // Envia o erro real do chip-tool para o cliente!
+        client.notifyClientLog("commissioning_log", fmt.Sprintf("Failed to read %s.%s. Reason: %s", clusterName, attributeName, strings.TrimSpace(stderr)))
+        return
+    }
 
 	var value interface{}
 	parsed := false
