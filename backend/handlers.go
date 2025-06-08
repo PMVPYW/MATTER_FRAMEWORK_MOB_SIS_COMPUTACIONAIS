@@ -306,8 +306,8 @@ func handleClientMessage(client *Client, msg ClientMessage) { // ClientMessage s
 		err = cmd.Run()            
 		stdout = outBuf.String()   
 		stderr = errBuf.String()  
-
-		re := regexp.MustCompile(`.*Data\s*=\s*\[\s*\n\s*\[\d+\]\s*\[\d+:\d+\]\s*\[DMG\]\s*([0-9]+) \(unsigned\),.*`)
+		
+		re := regexp.MustCompile(`\[DMG\]\s*([0-9]+)\s*\(unsigned\)`)
 
 		match := re.FindStringSubmatch(stdout)
 
