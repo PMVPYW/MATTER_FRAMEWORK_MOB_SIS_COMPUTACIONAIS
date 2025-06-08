@@ -1,7 +1,6 @@
 <template>
   <div class="step-container device-control-step">
     <h3>Step 3: Control Matter Devices</h3>
-
     <div v-if="commissionedDevices.length === 0">
       <p>
         No devices have been successfully commissioned yet, or no commissioned devices are
@@ -18,7 +17,8 @@
       <ul>
         <li v-for="device in commissionedDevices" :key="String(device.nodeId)">
           <span>{{ device.name || `Device ${device.nodeId}` }} (Node ID: {{ device.nodeId }})</span>
-          <button @click="wizardStore.selectDeviceForControl(device)">Select</button>
+          <!-- <button @click="wizardStore.selectDeviceForControl(device)">Select</button> -->
+          <button @click="selectDevice(device)">Select</button>
         </li>
       </ul>
     </div>
@@ -42,10 +42,13 @@
         <button @click="sendCommand('OnOff', 'Off')">Turn Off</button>
         <button @click="sendCommand('OnOff', 'Toggle')">Toggle</button>
         <p>
-          Current Status: <strong>{{ getDeviceStatus('OnOff_OnOff', 'Unknown') }}</strong>
+          Current Status:
+          <strong>{{
+            getDeviceStatus('OnOff_on-off', 'Unknown') == true ? 'Turned on' : 'Turned off'
+          }}</strong>
         </p>
       </div>
-
+      <!--
       <div class="control-group level-control">
         <h5>Brightness Control (Cluster: LevelControl)</h5>
         <input
@@ -64,7 +67,7 @@
           <strong>{{ getDeviceStatus('LevelControl_CurrentLevel', 'Unknown') }}</strong>
         </p>
       </div>
-    </div>
+    --></div>
     <div v-else-if="commissionedDevices.length > 0">
       <p>Please select a commissioned device from the list above to control it.</p>
     </div>
@@ -75,12 +78,31 @@
 import { ref, watch, computed, Ref, ComputedRef } from 'vue'
 import { useWizardStore } from '@/stores/wizardStore' // Using alias
 import type { DiscoveredDevice } from '@/types' // Using alias
+import { onMounted } from 'vue'
 
 const wizardStore = useWizardStore()
 const brightnessLevel: Ref<number> = ref(128)
 
+// const commissionedDevices: ComputedRef<DiscoveredDevice[]> = computed(() => {
+//   return wizardStore.discoveredDevices.filter((d) => !!d.nodeId)
+// })
+
 const commissionedDevices: ComputedRef<DiscoveredDevice[]> = computed(() => {
-  return wizardStore.discoveredDevices.filter((d) => !!d.nodeId)
+  const ipKey = wizardStore.rpiIpAddress
+  if (!ipKey) return []
+
+  try {
+    const stored = localStorage.getItem(ipKey)
+    return stored ? JSON.parse(stored) : []
+  } catch (e) {
+    console.error('Failed to parse commissioned devices from localStorage', e)
+    return []
+  }
+})
+
+onMounted(() => {
+  sendCommand('OnOff', 'read', { attribute: 'on-off' })
+  console.log(wizardStore)
 })
 
 function getDeviceStatus(attributeKey: string, defaultValue: any = 'N/A'): any {
@@ -92,11 +114,16 @@ function getDeviceStatus(attributeKey: string, defaultValue: any = 'N/A'): any {
   return defaultValue
 }
 
+function selectDevice(device: DiscoveredDevice) {
+  wizardStore.selectDeviceForControl(device)
+}
+
 watch(
   () => wizardStore.selectedDevice,
   (newDevice) => {
     if (newDevice && newDevice.nodeId) {
       const currentBrightness = getDeviceStatus('LevelControl_CurrentLevel')
+      console.log('currentBrightness', currentBrightness)
       if (currentBrightness !== 'Unknown' && currentBrightness !== undefined) {
         brightnessLevel.value = parseInt(String(currentBrightness), 10)
       } else {
@@ -126,10 +153,21 @@ watch(
 
 function sendCommand(cluster: string, command: string, params: Record<string, any> = {}): void {
   if (wizardStore.selectedDevice && wizardStore.selectedDevice.nodeId) {
-    wizardStore.sendDeviceCommand(wizardStore.selectedDevice.nodeId, cluster, command, params)
-  } else {
-    alert('No device selected or device has no Node ID.')
+    console.log(
+      'endpointId: wizardStore.selectedDevice?.endpointId: ',
+      wizardStore.selectedDevice.endpointId,
+    )
+
+    const finalParams = {
+      endpointId: wizardStore.selectedDevice?.endpointId || 13,
+      ...params,
+    }
+    wizardStore.sendDeviceCommand(wizardStore.selectedDevice.nodeId, cluster, command, finalParams)
   }
+  //this isn't need we can only advance if we have a device selected
+  // else {
+  //   alert('No device selected or device has no Node ID.') //TODO
+  // }
 }
 
 function setBrightness(): void {

@@ -70,22 +70,24 @@ async function startDiscovery(): Promise<void> {
   wizardStore.startDeviceDiscovery()
   setTimeout(() => {
     isDiscovering.value = false
-  }, 15000) // Reset button state after a while
+  }, 35000) // Reset button state after a while
 }
 
 const isDeviceCommissioning = (device: DiscoveredDevice): boolean => {
   const logs = wizardStore.commissioningLogs
+  // A verificação de início continua a mesma
   const commissionStartLog = logs.some((log) =>
-    log.includes(`commissioning request for discriminator ${device.discriminator}`),
+    log.includes(`request for discriminator ${device.discriminator}`),
   )
-  // Check if a commissioning status (success or fail) has been logged for this device's discriminator or potential nodeId
+
+  // A verificação de fim agora é muito mais fiável
+  // Procura pela nossa nova mensagem de log estruturada
   const commissionEndLog = logs.some(
     (log) =>
-      log.includes(`[Commissioning Status]:`) &&
-      (log.includes(`discriminator ${device.discriminator}`) ||
-        (device.nodeId && log.includes(`Node ID: ${device.nodeId}`)) ||
-        log.includes(`originalDiscriminator: ${device.discriminator}`)), // If backend sends this in status
+      log.includes('[Commissioning Status]:') &&
+      log.includes(`Request for Discriminator: ${device.discriminator}`),
   )
+
   return commissionStartLog && !commissionEndLog
 }
 </script>

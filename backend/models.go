@@ -16,29 +16,50 @@ type ServerMessage struct {
 // DiscoveredDevice represents information about a device found during discovery
 // This should align with the frontend's `DiscoveredDevice` type in `types.ts`
 type DiscoveredDevice struct {
-	ID            string `json:"id"`                       // Unique identifier for the frontend
-	Name          string `json:"name,omitempty"`           // Name of the device
-	Type          string `json:"type,omitempty"`           // e.g., "light", "sensor" (frontend might derive this)
-	Discriminator string `json:"discriminator"`            // Matter device discriminator
-	VendorID      string `json:"vendorId,omitempty"`       // Vendor ID
-	ProductID     string `json:"productId,omitempty"`      // Product ID
-	NodeID        string `json:"nodeId,omitempty"`         // Assigned Matter Node ID after commissioning (can be string or int, frontend expects string or number)
-	MACAddress    string `json:"macAddress,omitempty"`     // MAC address if available from discovery (useful for unique ID)
-	PairingHint   uint16 `json:"pairingHint,omitempty"`    // Pairing hint if available
-	DeviceType    uint32 `json:"deviceType,omitempty"`     // Matter device type code
-	CommissioningMode uint8 `json:"commissioningMode,omitempty"` // Commissioning mode
-	InstanceName  string `json:"instanceName,omitempty"` // Instance name (often from DNS-SD)
-
-	// Add other relevant fields from chip-tool discovery output as needed
+    ID                              string `json:"id"`                       // Unique identifier for the frontend
+    Name                            string `json:"name,omitempty"`           // Name of the device (often maps to Hostname)
+    Type                            string `json:"type,omitempty"`           // e.g., "BLE", "OnNetwork (DNS-SD)" derived from CommissioningMode
+    IPAddress                       string `json:"ipAddress,omitempty"`      // IP Address #1
+    Port                            int    `json:"port,omitempty"`           // Port
+    MrpIntervalIdle                 string `json:"mrpIntervalIdle,omitempty"`    // Mrp Interval idle (e.g., "not present")
+    MrpIntervalActive               string `json:"mrpIntervalActive,omitempty"`  // Mrp Interval active (e.g., "not present")
+    MrpActiveThreshold              string `json:"mrpActiveThreshold,omitempty"` // Mrp Active Threshold (e.g., "not present")
+    TCPClientSupported              bool   `json:"tcpClientSupported,omitempty"` // TCP Client Supported (0 or 1, converted to bool)
+    TCPServerSupported              bool   `json:"tcpServerSupported,omitempty"` // TCP Server Supported (0 or 1, converted to bool)
+    ICD                             string `json:"icd,omitempty"`                // ICD (e.g., "not present")
+    Discriminator                   string `json:"discriminator"`            // Long Discriminator
+    VendorID                        string `json:"vendorId,omitempty"`       // Vendor ID
+    ProductID                       string `json:"productId,omitempty"`      // Product ID
+    NodeID                          string `json:"nodeId,omitempty"`         // Assigned Matter Node ID after commissioning (can be string or int)
+    MACAddress                      string `json:"macAddress,omitempty"`     // MAC address if available from discovery (not in provided logs, but good to keep if needed)
+    PairingHint                     uint16 `json:"pairingHint,omitempty"`    // Pairing hint
+    DeviceType                      uint32 `json:"deviceType,omitempty"`     // Matter device type code (not in provided logs, but common in discovery)
+    CommissioningMode               uint8  `json:"commissioningMode,omitempty"` // Commissioning mode
+    InstanceName                    string `json:"instanceName,omitempty"` // Instance name (often from DNS-SD)
+    SupportsCommissionerGeneratedPasscode bool `json:"supportsCommissionerGeneratedPasscode,omitempty"` // Supports Commissioner Generated Passcode
 }
 
 // CommissionDevicePayload is the expected structure for "commission_device" message from client
 type CommissionDevicePayload struct {
-	Discriminator  string `json:"discriminator"`
-	SetupCode      string `json:"setupCode"`
-	NodeIDToAssign string `json:"nodeIdToAssign"` // This is the temporary/proposed Node ID from frontend
-	VendorID       string `json:"vendorId,omitempty"`
-	ProductID      string `json:"productId,omitempty"`
+	SetupCode                             string `json:"setupCode"`
+    Hostname                              string `json:"hostname"`
+    IPAddress                             string `json:"ipAddress"`
+    Port                                  string `json:"port"` 
+    MrpIntervalIdle                       string `json:"mrpIntervalIdle,omitempty"`    // Using string as "not present" is a value
+    MrpIntervalActive                     string `json:"mrpIntervalActive,omitempty"`  // Using string as "not present" is a value
+    MrpActiveThreshold                    string `json:"mrpActiveThreshold,omitempty"` // Using string as "not present" is a value
+    TCPClientSupported                    string `json:"tcpClientSupported"`
+    TCPServerSupported                    string `json:"tcpServerSupported"`
+    ICD                                   string `json:"icd,omitempty"`              // Using string as "not present" is a value
+    VendorID                              string `json:"vendorId"`
+    ProductID                             string `json:"productId"`
+    LongDiscriminator                     string `json:"discriminator"`
+    PairingHint                           string `json:"pairingHint"`
+    InstanceName                          string `json:"instanceName"`
+    CommissioningMode                     string `json:"commissioningMode"`
+    NodeID                                string `json:"nodeid"`
+    EndpointId                            string `json:"endpointid"`
+    SupportsCommissionerGeneratedPasscode string `json:"supportsCommissionerGeneratedPasscode"`
 }
 
 // DeviceCommandPayload is the expected structure for "device_command" message from client
@@ -49,6 +70,11 @@ type DeviceCommandPayload struct {
 	Params  map[string]interface{} `json:"params,omitempty"` // Command-specific parameters
 }
 
+type GetStatusPayload struct {
+    NodeID  string                 `json:"nodeId"`  // Node ID of the device to control
+    EndpointId                     string `json:"endpointId"`
+}
+
 // CommissioningStatusPayload is sent to the client after a commissioning attempt
 type CommissioningStatusPayload struct {
 	Success                        bool   `json:"success"`
@@ -56,6 +82,7 @@ type CommissioningStatusPayload struct {
 	Details                        string `json:"details,omitempty"`
 	Error                          string `json:"error,omitempty"`
 	OriginalDiscriminator          string `json:"originalDiscriminator,omitempty"` // Helps frontend map back
+    EndpointId                     string `json:"endpointId,omitempty"`
 	DiscriminatorAssociatedWithRequest string `json:"discriminatorAssociatedWithRequest,omitempty"` // From client request
 }
 
@@ -72,6 +99,14 @@ type AttributeUpdatePayload struct {
 type CommandResponsePayload struct {
 	Success bool   `json:"success"`
 	NodeID  string `json:"nodeId,omitempty"`
+	Details string `json:"details,omitempty"`
+	Error   string `json:"error,omitempty"`
+}
+
+type StatusResponsePayload struct {
+	Success bool   `json:"success"`
+	NodeID  string `json:"nodeId,omitempty"`
+    EndpointId  string `json:"endpointId,omitempty"`
 	Details string `json:"details,omitempty"`
 	Error   string `json:"error,omitempty"`
 }
