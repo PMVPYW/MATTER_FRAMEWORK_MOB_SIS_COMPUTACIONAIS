@@ -12,6 +12,10 @@
       Step {{ wizardStore.currentStep }} of {{ wizardStore.totalSteps }}: {{ currentStepTitle }}
     </p>
 
+    <div v-if="hasStoredDevices" class="device-manager-button">
+      <button @click="openDeviceManager">Manage Your Devices</button>
+    </div>
+
     <div v-if="wizardStore.currentStep === 1 && !rpiIpAddressConnected" class="rpi-connect-section">
       <h2>Connect to Raspberry Pi Backend</h2>
       <label for="rpi-ip">Enter Raspberry Pi IP Address (e.g., 192.168.1.XX):</label>
@@ -64,6 +68,7 @@ import { connectWebSocket, disconnectWebSocket } from '@/services/websocketServi
 import HubSetupStep from '@/components/HubSetupStep.vue'
 import DeviceDiscoveryStep from '@/components/DeviceDiscoveryStep.vue'
 import DeviceControl from '@/components/DeviceControl.vue'
+import router from './router'
 
 const wizardStore = useWizardStore()
 const rpiIpInput: Ref<string> = ref(wizardStore.rpiIpAddress || '')
@@ -106,6 +111,22 @@ function connectToBackend(): void {
       }
     }
   }, 2000)
+}
+
+const hasStoredDevices = computed(() => {
+  const ip = wizardStore.rpiIpAddress
+  if (!ip) return false
+  try {
+    const stored = localStorage.getItem(ip)
+    return stored ? JSON.parse(stored).length > 0 : false
+  } catch {
+    return false
+  }
+})
+
+function openDeviceManager() {
+  wizardStore.selectedDevice = null
+  wizardStore.currentStep = 3
 }
 
 const currentStepTitle: ComputedRef<string> = computed(() => {
@@ -206,5 +227,24 @@ watch(
 
 .content-area {
   margin-top: 20px;
+}
+
+.device-manager-button {
+  text-align: center;
+  margin-bottom: 20px;
+}
+
+.device-manager-button button {
+  padding: 10px 20px;
+  font-weight: bold;
+  background-color: #1976d2;
+  color: white;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.device-manager-button button:hover {
+  background-color: #1259a7;
 }
 </style>

@@ -42,8 +42,8 @@ export const useWizardStore = defineStore('wizard', () => {
         'sudo apt update && sudo apt install -y git python3-pip build-essential libglib2.0-dev-bin libglib2.0-dev libssl-dev libffi-dev python3-dev libavahi-client-dev python3.10-venv avahi-daemon bluez',
       expectedOutput: 'Packages updated and dependencies installed.',
       confirmed: false,
-            tooltip: "Prepares your Raspberry Pi by installing essential software. These packages are required to download, compile, and run the Matter SDK, which depends on tools like Git, Python, and Avahi for network device discovery."
-
+      tooltip:
+        'Prepares your Raspberry Pi by installing essential software. These packages are required to download, compile, and run the Matter SDK, which depends on tools like Git, Python, and Avahi for network device discovery.',
     },
     // {
     //   id: 2,
@@ -82,7 +82,6 @@ export const useWizardStore = defineStore('wizard', () => {
     //   confirmed: false,
     //         tooltip: "Downloads all the third-party libraries and projects that the Matter SDK depends on (e.g., for cryptography). This is necessary because the main repository doesn't contain all the code; it links to external projects, and this command fetches them."
 
-
     // },
     // {
     //   id: 6,
@@ -93,26 +92,26 @@ export const useWizardStore = defineStore('wizard', () => {
     //   confirmed: false,
     //             tooltip: "This command compiles all the source code to create the 'chip-tool'. This tool is a powerful command-line application that is essential for commissioning (adding) and controlling your Matter devices from the Raspberry Pi."
 
-
     // },
     {
       id: 2,
       instruction: 'Install chip-tool via snap.',
-        command:
-          'sudo snap install chip-tool',
-        expectedOutput: 'chip-tool <version number> from Canonical IoT Labs✓ installed',
-        confirmed: false,
-                  tooltip: "This command uses Snap, to install the chip-tool. This method is a convenient and fast alternative to building the tool from source code, as Snap packages the application with all its dependencies."
-      },
+      command: 'sudo snap install chip-tool',
+      expectedOutput: 'chip-tool <version number> from Canonical IoT Labs✓ installed',
+      confirmed: false,
+      tooltip:
+        'This command uses Snap, to install the chip-tool. This method is a convenient and fast alternative to building the tool from source code, as Snap packages the application with all its dependencies.',
+    },
     {
       id: 3,
-      instruction: 'Optional: Change firewall settings (only if you intend to use a virtual Matter device on another computer).',
-        command:
-          'sudo ufw allow 5353/udp & sudo ufw allow 5540/udp',
-        expectedOutput: 'Rule added (v6)...',
-        confirmed: false,
-                  tooltip: "This opens two essential firewall ports for a virtual Matter device. Port 5353/udp (mDNS) is required for the device to be discovered and commissioned on your network. Port 5540/udp is used for operational commands, such as turning the virtual device on or off."
-      },
+      instruction:
+        'Optional: Change firewall settings (only if you intend to use a virtual Matter device on another computer).',
+      command: 'sudo ufw allow 5353/udp & sudo ufw allow 5540/udp',
+      expectedOutput: 'Rule added (v6)...',
+      confirmed: false,
+      tooltip:
+        'This opens two essential firewall ports for a virtual Matter device. Port 5353/udp (mDNS) is required for the device to be discovered and commissioned on your network. Port 5540/udp is used for operational commands, such as turning the virtual device on or off.',
+    },
     // {
     //   id: 6,
     //   instruction: 'Optional: Install OpenThread Border Router (OTBR) if using Thread devices.',
@@ -282,7 +281,27 @@ export const useWizardStore = defineStore('wizard', () => {
           `[Commissioning Status]: Success: ${statusPayload.success}, Node ID: ${statusPayload.nodeId}, Details: ${statusPayload.details || statusPayload.error || ''}`,
         )
         console.log('CommissioningLogs', commissioningLogs.value)
-        localStorage.setItem(statusPayload.nodeId, statusPayload.originalDiscriminator)
+
+        const clientKey = rpiIpAddress.value
+
+        const nodeId = statusPayload.nodeId
+        const originalDiscriminator = statusPayload.originalDiscriminator
+
+        if (nodeId && originalDiscriminator) {
+          const newNode = { nodeId, originalDiscriminator }
+
+          let existing = JSON.parse(localStorage.getItem(clientKey)) || []
+
+          const alreadyExists = existing.some(
+            (entry) =>
+              entry.nodeId === nodeId || entry.originalDiscriminator === originalDiscriminator,
+          )
+
+          if (!alreadyExists) {
+            existing.push(newNode)
+            localStorage.setItem(clientKey, JSON.stringify(existing))
+          }
+        }
         if (statusPayload.success && statusPayload.nodeId) {
           console.log('It Was a sucesss')
           const deviceToUpdate = discoveredDevices.value.find(

@@ -17,7 +17,8 @@
       <ul>
         <li v-for="device in commissionedDevices" :key="String(device.nodeId)">
           <span>{{ device.name || `Device ${device.nodeId}` }} (Node ID: {{ device.nodeId }})</span>
-          <button @click="wizardStore.selectDeviceForControl(device)">Select</button>
+          <!-- <button @click="wizardStore.selectDeviceForControl(device)">Select</button> -->
+          <button @click="selectDevice(device)">Select</button>
         </li>
       </ul>
     </div>
@@ -82,8 +83,21 @@ import { onMounted } from 'vue'
 const wizardStore = useWizardStore()
 const brightnessLevel: Ref<number> = ref(128)
 
+// const commissionedDevices: ComputedRef<DiscoveredDevice[]> = computed(() => {
+//   return wizardStore.discoveredDevices.filter((d) => !!d.nodeId)
+// })
+
 const commissionedDevices: ComputedRef<DiscoveredDevice[]> = computed(() => {
-  return wizardStore.discoveredDevices.filter((d) => !!d.nodeId)
+  const ipKey = wizardStore.rpiIpAddress
+  if (!ipKey) return []
+
+  try {
+    const stored = localStorage.getItem(ipKey)
+    return stored ? JSON.parse(stored) : []
+  } catch (e) {
+    console.error('Failed to parse commissioned devices from localStorage', e)
+    return []
+  }
 })
 
 onMounted(() => {
@@ -98,6 +112,10 @@ function getDeviceStatus(attributeKey: string, defaultValue: any = 'N/A'): any {
     return status && status[attributeKey] !== undefined ? status[attributeKey] : defaultValue
   }
   return defaultValue
+}
+
+function selectDevice(device: DiscoveredDevice) {
+  wizardStore.selectDeviceForControl(device)
 }
 
 watch(
@@ -146,7 +164,7 @@ function sendCommand(cluster: string, command: string, params: Record<string, an
     }
     wizardStore.sendDeviceCommand(wizardStore.selectedDevice.nodeId, cluster, command, finalParams)
   } else {
-    alert('No device selected or device has no Node ID.')
+    alert('No device selected or device has no Node ID.') //TODO
   }
 }
 
