@@ -163,9 +163,11 @@ function sendCommand(cluster: string, command: string, params: Record<string, an
       ...params,
     }
     wizardStore.sendDeviceCommand(wizardStore.selectedDevice.nodeId, cluster, command, finalParams)
-  } else {
-    alert('No device selected or device has no Node ID.') //TODO
   }
+  //this isn't need we can only advance if we have a device selected
+  // else {
+  //   alert('No device selected or device has no Node ID.') //TODO
+  // }
 }
 
 function setBrightness(): void {

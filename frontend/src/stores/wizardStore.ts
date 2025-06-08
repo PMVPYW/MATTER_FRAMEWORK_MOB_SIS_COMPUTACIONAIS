@@ -287,21 +287,15 @@ export const useWizardStore = defineStore('wizard', () => {
         const nodeId = statusPayload.nodeId
         const originalDiscriminator = statusPayload.originalDiscriminator
 
-        if (nodeId && originalDiscriminator) {
-          const newNode = { nodeId, originalDiscriminator }
+        // if (nodeId && originalDiscriminator) {
+        //   const newNode = { nodeId, originalDiscriminator }
 
-          let existing = JSON.parse(localStorage.getItem(clientKey)) || []
+        //   let existing = JSON.parse(localStorage.getItem(clientKey)) || []
 
-          const alreadyExists = existing.some(
-            (entry) =>
-              entry.nodeId === nodeId || entry.originalDiscriminator === originalDiscriminator,
-          )
+        //   existing.push(newNode)
 
-          if (!alreadyExists) {
-            existing.push(newNode)
-            localStorage.setItem(clientKey, JSON.stringify(existing))
-          }
-        }
+        //   localStorage.setItem(clientKey, JSON.stringify(existing))
+        // }
         if (statusPayload.success && statusPayload.nodeId) {
           console.log('It Was a sucesss')
           const deviceToUpdate = discoveredDevices.value.find(
@@ -318,6 +312,12 @@ export const useWizardStore = defineStore('wizard', () => {
             ) {
               selectedDevice.value.nodeId = statusPayload.nodeId
             }
+
+            let existing = JSON.parse(localStorage.getItem(clientKey) ?? '[]') || []
+
+            existing.push({ ...deviceToUpdate, endpointId: statusPayload.endpointId })
+
+            localStorage.setItem(clientKey, JSON.stringify(existing))
           } else {
             const newDevice: DiscoveredDevice = {
               id: `device_node_${statusPayload.nodeId}`,
@@ -328,7 +328,8 @@ export const useWizardStore = defineStore('wizard', () => {
                 statusPayload.discriminatorAssociatedWithRequest ||
                 'N/A',
             }
-            if (!discoveredDevices.value.find((d) => d.nodeId === statusPayload.nodeId)) {
+
+            if (!discoveredDevices.value.find((d) => d.nodeId == statusPayload.nodeId)) {
               discoveredDevices.value.push(newDevice)
             }
           }
@@ -386,6 +387,8 @@ export const useWizardStore = defineStore('wizard', () => {
       commissioningLogs.value.push(
         `Selected ${device.name || `Device ${device.nodeId}`} (Node ID: ${device.nodeId}) for control.`,
       )
+
+      getDeviceStatus(device.nodeId.toString(), device.endpointId?.toString() ?? '')
     } else {
       const name = device.name || `Discriminator ${device.discriminator}`
       commissioningLogs.value.push(

@@ -72,7 +72,7 @@ export interface CommissioningStatusPayload {
   details?: string
   error?: string
   discriminatorAssociatedWithRequest?: string // To map back to the discovered device
-  endpointID?: string
+  endpointId?: string
   // Include other fields backend might send like the original discriminator
   originalDiscriminator: string
 }
